@@ -33,13 +33,13 @@ int find_in_db(char * vendid, char * devid, FILE * fil,
 	while (!(vname[0])) {
 		//loop through
 		if (fgets(buf, 255, fil)==NULL) return 2;
-		if (vtext = checkmatch(vendid, buf))
+		if (vtext = id_check_match(vendid, buf))
 			strncpy(vname, vtext, strlen(vtext) - 1);
 	}
 	while (!(devname[0])) {
 		if ((fgets(buf, 255, fil)==NULL) || (buf[0] != '\t' ))
 			return 1;
-		if (dtext = checkmatch(devid, buf + 1))
+		if (dtext = id_check_match(devid, buf + 1))
 			strncpy(devname, dtext, strlen(dtext) - 1);
 	}
 	return 0; /* Succeeded in matching both */

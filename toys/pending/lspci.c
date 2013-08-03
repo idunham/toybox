@@ -1,29 +1,45 @@
 /*
  * lspci - written by Isaac Dunham
 
-USE_LSPCI(NEWTOY(lspci, "emkns:", TOYFLAG_USR|TOYFLAG_BIN))
+USE_LSPCI(NEWTOY(lspci, "emkn@", TOYFLAG_USR|TOYFLAG_BIN))
 
 config LSPCI
   bool "lspci"
   default n
   help
-    usage: lspci [-ekmn]
+    usage: lspci [-ekmn@]
 
     List PCI devices.
     -e  Print all 6 digits in class (like elspci)
     -k  Print kernel driver
     -m  Machine parseable format
-    -n  Numeric output (default)
+    -n  Numeric output
+
+config LSPCI_TEXT
+  bool "lspci readable output"
+  depends on LSPCI
+  default n
+  help
+    lspci without -n prints readable descriptions;
+    lspci -nn prints both readable and numeric description
 */
 #define FOR_lspci
 #include "toys.h"
 
+GLOBALS(
+long numeric;
+
+FILE * db;
+)
+
 int do_lspci(struct dirtree *new)
 {
-  int alen = 8, dirfd;
+  int alen = 8, dirfd, res = 2; //no textual descriptions read
   char *dname = dirtree_path(new, &alen);
+  memset(toybuf, 0, 4096);
   struct {
-    char class[16], vendor[16], device[16], module[256];
+    char class[16], vendor[16], device[16], module[256],
+    vname[256], devname[256];
   } *bufs = (void*)(toybuf + 2);
 
   if (!strcmp("/sys/bus/pci/devices", dname)) return DIRTREE_RECURSE;
@@ -52,7 +68,15 @@ int do_lspci(struct dirtree *new)
         if (readlink(dname, bufs->module, sizeof(bufs->module)) != -1)
           driver = basename(bufs->module);
       }
-      printf(fmt, new->name + 5, bufs->class, bufs->vendor, bufs->device, 
+      if (CFG_LSPCI_TEXT && (TT.numeric != 1)) {
+        //Look up text
+        fseek(TT.db, 0, SEEK_SET);
+        res = find_in_db(bufs->vendor, bufs->device, TT.db,
+                            bufs->vname, bufs->devname);
+      }
+      printf(fmt, new->name + 5, bufs->class, 
+      (res < 2) ? bufs->vname : bufs->vendor, 
+      !(res) ? bufs->devname : bufs->device, 
                driver);
     }
   }
@@ -61,5 +85,13 @@ int do_lspci(struct dirtree *new)
 
 void lspci_main(void)
 {
+  if (CFG_LSPCI_TEXT && (TT.numeric != 1)) {
+    TT.db = fopen("/usr/share/misc/pci.ids", "r");
+    if (errno) {
+      TT.numeric = 1;
+      error_msg("could not open PCI ID db");
+    }
+  }
+
   dirtree_read("/sys/bus/pci/devices", do_lspci);
 }
