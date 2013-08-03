@@ -11,7 +11,7 @@ USE_MOUNT(NEWTOY(mount, ">2o*t:O:farwv", TOYFLAG_BIN))
 
 config MOUNT
   bool "mount"
-  default y
+  default n
   help
     usage: mount [-arw] [-t type] [-o OPT] [-O OPT] [dev] [dir]
 
@@ -54,9 +54,6 @@ GLOBALS(
   char *o_options;
 )
 
-#include <rpc/rpc.h>
-#include <rpc/pmap_prot.h>
-#include <rpc/pmap_clnt.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <linux/loop.h>
@@ -332,6 +329,10 @@ typedef struct mountres3 {
   } mountres3_u;
 } mountres3;
 
+#if NFS_RPC_BLOAT
+#include <rpc/rpc.h>
+#include <rpc/pmap_prot.h>
+#include <rpc/pmap_clnt.h>
 static bool_t decode_fhstatus(XDR *xdrs, fhstatus *objp)
 {
   if (!xdr_u_int(xdrs, &objp->fhs_status))
@@ -981,6 +982,7 @@ ret:
    return ret;
 }
 /* End of nfs mount implementation */
+#endif
 
 static char* get_device_name(char *label, int uuid)
 {
@@ -1102,12 +1104,13 @@ static int do_mount(char *dev, char *dir, char *type, unsigned long rwflag, void
     dev = loopdev;
   }
 
-
+#if NFS_MOUNT_BLOAT
   if ((strchr(dev, ':') != NULL)  && type == NULL)
       type = "nfs";
 
   if (type && strcmp(type ,"nfs") == 0)
     return do_nfsmount(dev, dir, rwflag, (char*)data);
+#endif
 
   if (type == NULL) {//if type not specified on command line
     fp = fopen("/proc/filesystems", "r");
