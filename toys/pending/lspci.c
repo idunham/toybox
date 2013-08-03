@@ -17,44 +17,42 @@ config LSPCI
 */
 #define FOR_lspci
 #include "toys.h"
-char * readat_name(int dirfd, char *fname, size_t nbyte)
-{
-  int fd;
-  if ((fd = openat(dirfd, fname, O_RDONLY)) < 0) return NULL;
-  char *buf = xzalloc(nbyte+1);
-  read(fd, buf, nbyte);
-  close(fd);
-  return buf;
-}
 
 int do_lspci(struct dirtree *new)
 {
-  int alen = 8;
+  int alen = 8, dirfd;
   char *dname = dirtree_path(new, &alen);
+  struct {
+    char class[16], vendor[16], device[16], module[256];
+  } *bufs = (void*)(toybuf + 2);
 
-  if (!strcmp("/sys/bus/pci/devices", dname))
-    return DIRTREE_RECURSE;
+  if (!strcmp("/sys/bus/pci/devices", dname)) return DIRTREE_RECURSE;
   errno = 0;
-  int dirfd = open(dname, O_RDONLY);
+  dirfd = open(dname, O_RDONLY);
   if (dirfd > 0) {
-    char *class = readat_name(dirfd, "class",
-                (toys.optflags & FLAG_e) ? 8 : 6);
-    char *vendor = readat_name(dirfd, "vendor", 6);
-    char *device = readat_name(dirfd, "device", 6);
+    char *p, **fields = (char*[]){"class", "vendor", "device", ""};
+
+    for (p = toybuf; **fields; p+=16, fields++) {
+      int fd, size;
+
+      if ((fd = openat(dirfd, *fields, O_RDONLY)) < 0) continue;
+      size = ((toys.optflags & FLAG_e) && (p == toybuf)) ? 8 : 6;
+      p[read(fd, p, size)] = '\0';
+      close(fd);
+    }
 
     close(dirfd);
     if (!errno) {
       char *driver = "";
-      char *fmt = toys.optflags & FLAG_m ?  "%s, \"%s\" \"%s\" \"%s\" \"%s\"\n"
-                                                    : "%s Class %s: %s:%s %s\n";
+      char *fmt = toys.optflags & FLAG_m ? "%s, \"%s\" \"%s\" \"%s\" \"%s\"\n"
+                                                   : "%s Class %s: %s:%s %s\n";
 
       if (toys.optflags & FLAG_k) {
-        char module[256] = "";
         strcat(dname, "/driver");
-        if (-1 != readlink(dname, module, sizeof(module)))
-          driver = basename(module);
+        if (readlink(dname, bufs->module, sizeof(bufs->module)) != -1)
+          driver = basename(bufs->module);
       }
-      printf(fmt, new->name + 5, class + 2, vendor + 2, device + 2,
+      printf(fmt, new->name + 5, bufs->class, bufs->vendor, bufs->device, 
                driver);
     }
   }
