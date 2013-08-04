@@ -25,6 +25,7 @@ config LSPCI_TEXT
 */
 #define FOR_lspci
 #include "toys.h"
+extern int find_in_db(char * , char * , FILE * , char * , char * );
 
 GLOBALS(
 long numeric;
@@ -74,10 +75,18 @@ int do_lspci(struct dirtree *new)
         res = find_in_db(bufs->vendor, bufs->device, TT.db,
                             bufs->vname, bufs->devname);
       }
-      printf(fmt, new->name + 5, bufs->class, 
-      (res < 2) ? bufs->vname : bufs->vendor, 
-      !(res) ? bufs->devname : bufs->device, 
-               driver);
+      if (CFG_LSPCI_TEXT && (TT.numeric == 2)) {
+        fmt = toys.optflags & FLAG_m 
+            ? "%s, \"%s\" \"%s [%s]\" \"%s [%s]\" \"%s\"\n"
+            : "%s Class %s: %s [%s] %s [%s] %s\n";
+        printf(fmt, new->name + 5, bufs->class, bufs->vname, bufs->vendor,
+               bufs->devname, bufs->device, driver);
+      } else {
+        printf(fmt, new->name + 5, bufs->class, 
+               (res < 2) ? bufs->vname : bufs->vendor, 
+               !(res) ? bufs->devname : bufs->device, driver);
+      }
+      
     }
   }
   return 0;
