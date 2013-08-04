@@ -1,0 +1,49 @@
+#!/bin/bash
+
+[ -f testing.sh ] && . testing.sh
+
+# Copyright 2013 by Kyungsu Kim <kaspyx@gmail.com>
+# Copyright 2013 by Kyungwan Han <asura321@gmail.com>
+
+# This one's tricky both because echo is a shell builtin (so $PATH is
+# irrelevant) and because the "result" field is parsed with echo -e.
+# To make it work, "$CMD" is an explicit path to the command being tested,
+# so "result" keeps using the shell builtin but we test the one in toybox.
+
+#testing "name" "command" "result" "infile" "stdin"
+
+testing "grep -c" "grep -c 123 input" "3\n" "123\ncount 123\n123\nfasdfasdf" ""
+
+echo -e "this is test" > foo
+echo -e "this is test2" > foo2
+echo -e "this is foo3" > foo3
+testing "grep -l" "grep -l test foo foo2 foo3" "foo\nfoo2\n" "" ""
+rm foo foo2 foo3
+
+testing "grep -q" "grep -q test input && echo yes" "yes\n" "this is a test\n" ""
+testing "grep -E" "grep -E [0-9] input" "1234123asdfas123123\n1\n" \
+  "1234123asdfas123123\nabc\n1\nabcde" ""
+testing "grep -e" "grep -e [0-9] input" "1234123asdfas123123\n1\n" \
+  "1234123asdfas123123\nabc\n1\nabcde" ""
+testing "grep -F" "grep -F is input" "this is test\nthis is test2\n" \
+  "this is test\nthis is test2\ntest case" ""
+
+echo -e "this is test\nthis is test2\ntest case" > foo
+echo -e "hello this is test" > foo2
+echo -e "hi hello" > foo3
+testing "grep -H" "grep -H is foo foo2 foo3" "foo:this is test\nfoo:this is test2\nfoo2:hello this is test\n" "" ""
+rm foo foo2 foo3
+
+testing "grep -b" "grep -b is input" "0:this is test\n13:this is test2\n" \
+  "this is test\nthis is test2\ntest case" ""
+testing "grep -i" "grep -i is input" "thisIs test\nthis is test2\n" \
+  "thisIs test\nthis is test2\ntest case" ""
+testing "grep -n" "grep -n is input" "1:this is test\n2:this is test2\n" \
+  "this is test\nthis is test2\ntest case" ""
+testing "grep -o" "grep -o is input" "is\nis\nis\nis\n" \
+  "this is test\nthis is test2\ntest case" ""
+testing "grep -s" "grep -s hello asdf 2>&1" "" "" ""
+testing "grep -v" "grep -v abc input" "1234123asdfas123123\n1ABa\n" \
+  "1234123asdfas123123\n1ABabc\nabc\n1ABa\nabcde" ""
+testing "grep -w" "grep -w abc input" "abc\n" \
+  "1234123asdfas123123\n1ABabc\nabc\n1ABa\nabcde" ""
