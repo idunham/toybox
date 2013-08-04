@@ -70,10 +70,8 @@ int do_lspci(struct dirtree *new)
           driver = basename(bufs->module);
       }
       if (CFG_LSPCI_TEXT && (TT.numeric != 1)) {
-        //Look up text
-        fseek(TT.db, 0, SEEK_SET);
         res = find_in_db(bufs->vendor, bufs->device, TT.db,
-                            bufs->vname, bufs->devname);
+                         bufs->vname, bufs->devname);
       }
       if (CFG_LSPCI_TEXT && (TT.numeric == 2)) {
         fmt = toys.optflags & FLAG_m 

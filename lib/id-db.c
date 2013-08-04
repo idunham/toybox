@@ -7,15 +7,15 @@
 
 char * id_check_match(char * id, char * buf)
 {
-	int i = 0;
-	while (id[i]) {
-		if (id[i] == buf[i]) {
-			i++;
-		} else {
-			return (char *)0L;
-		}
-	}
-	return (buf + i + 2);
+  int i = 0;
+  while (id[i]) {
+    if (id[i] == buf[i]) {
+      i++;
+    } else {
+      return (char *)0L;
+    }
+  }
+  return (buf + i + 2);
 }
 
 /*
@@ -27,22 +27,22 @@ char * id_check_match(char * id, char * buf)
  * dev to be matched
  */
 int find_in_db(char * vendid, char * devid, FILE * fil,
-		char * vname, char * devname)
+               char * vname, char * devname)
 {
-	char buf[256], *vtext = 0L, *dtext = 0L;
-	while (!(vname[0])) {
-		//loop through
-		if (fgets(buf, 255, fil)==NULL) return 2;
-		if ((vtext = id_check_match(vendid, buf)))
-			strncpy(vname, vtext, strlen(vtext) - 1);
-	}
-	while (!(devname[0])) {
-		if ((fgets(buf, 255, fil)==NULL) || (buf[0] != '\t' ))
-			return 1;
-		if ((dtext = id_check_match(devid, buf + 1)))
-			strncpy(devname, dtext, strlen(dtext) - 1);
-	}
-	return 0; /* Succeeded in matching both */
+  fseek(fil, 0, SEEK_SET);
+  char buf[256], *vtext = 0L, *dtext = 0L;
+  while (!(vname[0])) {
+    if (fgets(buf, 255, fil)==NULL) return 2;
+    if ((vtext = id_check_match(vendid, buf)))
+      strncpy(vname, vtext, strlen(vtext) - 1);
+  }
+  while (!(devname[0])) {
+    if ((fgets(buf, 255, fil)==NULL) || (buf[0] != '\t' ))
+      return 1;
+    if ((dtext = id_check_match(devid, buf + 1)))
+      strncpy(devname, dtext, strlen(dtext) - 1);
+  }
+  return 0; /* Succeeded in matching both */
 }
 
 
