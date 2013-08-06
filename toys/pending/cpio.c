@@ -54,7 +54,7 @@ struct cpio_newc_header {
   char    c_mode[8];
   char    c_uid[8];
   char    c_gid[8];
-  char    c_nlink[8];
+  char    c_nlink[8]; //here
   char    c_mtime[8];
   char    c_filesize[8];
   char    c_devmajor[8];
@@ -67,14 +67,24 @@ struct cpio_newc_header {
 
 void write_cpio_member(int fd, char *name)
 {
+  size_t out = 0;
   struct cpio_newc_header hdr;
-  memset(&hdr, 0, sizeof(hdr));
+  hdr = malloc(sizeof(struct cpio_newc_header));
+  memset(&hdr, '0', sizeof(hdr));
   struct stat buf;
   if (stat(name, &buf) == -1) return;
   //strcpy(hdr.c_magic, "070701");
-  snprintf(&hdr, sizeof(hdr), "070701%08o%08o%08o%08o",
-	   buf.st_ino, buf.st_mode, buf.st_uid, buf.st_gid, buf.st_nlink);
-  
+  snprintf(&hdr, sizeof(hdr), "070701%08o%08o%08o%08o%08o"
+           "%08o%08o%08o%08o" "%08o%08o",
+	   buf.st_ino, buf.st_mode, buf.st_uid, buf.st_gid, buf.st_nlink,
+           buf.st_mtime, buf.st_size, major(buf.st_dev), minor(buf.st_dev),
+           major(buf.st_rdev), minor(buf.st_rdev), strlen(name) );
+  write(1, &hdr, sizeof(struct cpio_newc_header));
+  write(1, name, strlen(name));
+  while (out >= 0) {
+    out = read(fd, toybuf, sizeof(toybuf));
+    write(1, toybuf, out);
+  }
 }
 
 void cpio_main(void)
