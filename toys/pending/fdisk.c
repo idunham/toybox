@@ -61,7 +61,7 @@ struct part_entry {
 
 struct part_types {
   int id;
-  char type[PATH_MAX];
+  char type[24];
 } sys_types[] = {
   {0x00, "Empty"}, {0x01, "FAT12"}, {0x04, "FAT16 <32M"}, {0x05, "Extended"},
   {0x06, "FAT16"}, {0x07, "HPFS/NTFS"}, {0x0a, "OS/2 Boot Manager"},
@@ -527,13 +527,13 @@ static int read_input(char *mesg, char *outp)
 {
   char *p;
   int size = 0;
-redo:
-  xprintf("%s", mesg);
-  p = fgets(toybuf, 80, stdin);
+  while (!size) {
+    xprintf("%s", mesg);
+    p = fgets(toybuf, 80, stdin);
   
-  if (!p || !(size = strlen(p))) exit(0);
-  if (p[size-1] == '\n') p[--size] = '\0';
-  if (!size) goto redo;
+    if (!p || !(size = strlen(p))) exit(0);
+    if (p[size-1] == '\n') p[--size] = '\0';
+  }
 
   while (*p != '\0' && *p <= ' ') p++;
   if (outp) memcpy(outp, p, strlen(p) + 1); //1 for nul
@@ -686,15 +686,14 @@ static int get_non_free_partition(int max)
 
   for (i = 0; i < max; i++) {
     if (!is_partition_clear(partitions[i].part)) {
-      if (num >= 0) goto get_from_user;
+      if (num >= 0)
+        return ask_partition(num_parts)-1;
       num = i;
     }
   }
   (num >= 0) ? xprintf("Selected partition %d\n",num+1):
     xprintf("No partition is defined yet!\n");
   return num;
-get_from_user:
-  return ask_partition(num_parts)-1;
 }
 
 /* a try at autodetecting an empty partition table entry,
@@ -706,15 +705,14 @@ static int get_free_partition(int max)
 
   for (i = 0; i < max; i++) {
     if (is_partition_clear(partitions[i].part)) {
-      if (num >= 0) goto get_from_user;
+      if (num >= 0)
+        return ask_partition(4)-1;
       num = i;
     }
   }
   (num >= 0) ? xprintf("Selected partition %d\n",num+1):
     xprintf("All primary partitions have been defined already!\n");
   return num;
-get_from_user:
-  return ask_partition(4)-1;
 }
 
 //taking user input for partition start/end sectors/cyinders
@@ -830,12 +828,12 @@ static sector_t ask_start_sector(int idx, sector_t* begin, sector_t* end, int ex
     if (asked) valid = validate(start_index, begin, end, start, asked);
     if (valid) break;
 
-find_start_again:
-    for (i = start_index; i < num_parts; i++) 
-      if (start >= begin[i] && start <= end[i])
-        start = end[i] + 1 + ((idx >= 4)? offset : 0);
+    do {
+      for (i = start_index; i < num_parts; i++) 
+        if (start >= begin[i] && start <= end[i])
+          start = end[i] + 1 + ((idx >= 4)? offset : 0);
+    } while (!validate(start_index, begin, end, start, 0));
 
-    if (!validate(start_index, begin, end, start, 0)) goto find_start_again;
     start_cyl = start/(g_sectors * g_heads) + 1;
     limit_cyl = limit/(g_sectors * g_heads) + 1;
 
