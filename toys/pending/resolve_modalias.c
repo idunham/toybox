@@ -12,7 +12,6 @@ config RESOLVE_MODALIAS
 
     Output a module name (as accepted by modinfo or modprobe) 
     for each module alias given.
-    returns number not matched
 */
 
 #define FOR_resolve_modalias
@@ -23,45 +22,58 @@ GLOBALS(
 char *aliases;
 )
 
-char * resolve_name(FILE * fil, char *alias)
+struct string_list * resolve_name(FILE * fil, char *alias, struct string_list *modules)
 {
   char *ret, *ptr;
   int slen;
   errno = 0;
 
-  while (!errno) {
+  for (;;) {
     ret = fgets(toybuf, sizeof(toybuf), fil);
-    if ((ret==toybuf) && (ret==strstr(ret, "alias "))) {
+    if (ret!=toybuf) return modules;
+    if (ret==strstr(ret, "alias ")) {
       slen = strlen(toybuf);
       ptr = ret = toybuf + 6;
       ret = strstr(ptr, " ");
       if ((long)ret - (long)toybuf < slen + 1) {
         if (toybuf[slen - 1] == '\n') toybuf[slen-1] = '\0';
         ret[0] = '\0'; ret++;
-        if (!fnmatch( ptr, alias, FNM_PERIOD)) return ret;
+        if (!fnmatch( ptr, alias, FNM_PERIOD)) {
+          modules->next = xzalloc(sizeof(struct string_list) + strlen(ret) + 1);
+          strcpy(modules->next->str, ret);
+          modules=modules->next;
+        }
       } 
     }
   }
-  return (char *)0;
+}
+
+void print_free(void * arg)
+{
+  puts((char *)arg + sizeof(char *));
+  free(arg);
 }
 
 void resolve_modalias_main(void)
 {
   FILE * fil;
-  char * modname;
+  struct string_list *names = xzalloc(sizeof(struct string_list)), *curr;
+  curr = names;
+
 
   if (!TT.aliases) {
     struct utsname uts;
 
     if (uname(&uts) < 0) perror_exit("bad uname");
     sprintf(toybuf, "/lib/modules/%s/modules.alias", uts.release);
+  } else {
+    snprintf(toybuf, sizeof(toybuf), "%s", TT.aliases);
   }
   fil = xfopen(toybuf, "r");
-  for(int i = 0; toys.optargs[i]; i++) {
-    if (modname = resolve_name(fil, toys.optargs[i])) {
-      printf("%s\n", modname);
-    } else {
-      toys.exitval++;
-    }
+  int i;
+  for(i = 0; toys.optargs[i]; i++) {
+    curr = resolve_name(fil, toys.optargs[i], curr );
+    fseek(fil, 0, SEEK_SET);
   }
+  if (names) llist_traverse(names, print_free);
 }
