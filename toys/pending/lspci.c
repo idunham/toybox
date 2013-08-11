@@ -1,19 +1,20 @@
 /*
  * lspci - written by Isaac Dunham
 
-USE_LSPCI(NEWTOY(lspci, "emkn@", TOYFLAG_USR|TOYFLAG_BIN))
+USE_LSPCI(NEWTOY(lspci, "emkn@"USE_LSPCI_TEXT("i:"), TOYFLAG_USR|TOYFLAG_BIN))
 
 config LSPCI
   bool "lspci"
   default n
   help
-    usage: lspci [-ekmn@]
+    usage: lspci [-ekmn] [-i /usr/share/misc/pci.ids]
 
     List PCI devices.
     -e  Print all 6 digits in class (like elspci)
     -k  Print kernel driver
     -m  Machine parseable format
-    -n  Numeric output
+    -n  Numeric output (-nn forces both text and numeric)
+    -i /path/to/pci.ids (only if text output is enabled)
 
 config LSPCI_TEXT
   bool "lspci readable output"
@@ -28,6 +29,7 @@ config LSPCI_TEXT
 extern int find_in_db(char * , char * , FILE * , char * , char * );
 
 GLOBALS(
+char * ids;
 long numeric;
 
 FILE * db;
@@ -134,7 +136,8 @@ int do_lspci(struct dirtree *new)
 void lspci_main(void)
 {
   if (CFG_LSPCI_TEXT && (TT.numeric != 1)) {
-    TT.db = fopen("/usr/share/misc/pci.ids", "r");
+    if (!TT.ids) TT.ids = "/usr/share/misc/pci.ids";
+    TT.db = fopen(TT.ids , "r");
     if (errno) {
       TT.numeric = 1;
       error_msg("could not open PCI ID db");
