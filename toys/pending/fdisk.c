@@ -527,13 +527,13 @@ static int read_input(char *mesg, char *outp)
 {
   char *p;
   int size = 0;
-  while (!size) {
+  do {
     xprintf("%s", mesg);
     p = fgets(toybuf, 80, stdin);
   
     if (!p || !(size = strlen(p))) exit(0);
     if (p[size-1] == '\n') p[--size] = '\0';
-  }
+  } while (!size);
 
   while (*p != '\0' && *p <= ' ') p++;
   if (outp) memcpy(outp, p, strlen(p) + 1); //1 for nul
