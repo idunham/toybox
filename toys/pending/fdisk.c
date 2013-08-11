@@ -144,20 +144,18 @@ static void list_types(void)
   xputc('\n');
 }
 
-static int valid(long size)
-{
-  if (size == 512 || size == 1024 || size == 2048 || size == 4096) return 1;
-  else {
-      toys.exithelp = 1;
-      error_exit("");
-  }
-}
-
 static void read_sec_sz()
 {
   int arg;       
   if (ioctl(dev_fd, BLKSSZGET, &arg) == 0) g_sect_size = arg;
-  if ((toys.optflags & FLAG_b) && valid(TT.sect_sz)) g_sect_size = TT.sect_sz;
+  if (toys.optflags & FLAG_b) {
+    if (TT.sect_sz !=  512 && TT.sect_sz != 1024 && TT.sect_sz != 2048 &&
+        TT.sect_sz != 4096) {
+      toys.exithelp++;
+      error_exit("bad sector size");
+    }
+    g_sect_size = TT.sect_sz;
+  }
 }
 
 static sector_t read_size()
@@ -1279,37 +1277,37 @@ static void fix_order(void)
 
 static void print_menu(void)
 {
-  xprintf("a\ttoggle a bootable flag\n");
-  xprintf("b\tedit bsd disklabel\n");
-  xprintf("c\ttoggle the dos compatibility flag\n");
-  xprintf("d\tdelete a partition\n");
-  xprintf("l\tlist known partition types\n");
-  xprintf("n\tadd a new partition\n");
-  xprintf("o\tcreate a new empty DOS partition table\n");
-  xprintf("p\tprint the partition table\n");
-  xprintf("q\tquit without saving changes\n");
-  xprintf("s\tcreate a new empty Sun disklabel\n");  /* sun */
-  xprintf("t\tchange a partition's system id\n");
-  xprintf("u\tchange display/entry units\n");
-  xprintf("v\tverify the partition table\n");
-  xprintf("w\twrite table to disk and exit\n");
-  xprintf("x\textra functionality (experts only)\n");
+  xprintf("a\ttoggle a bootable flag\n"
+  "b\tedit bsd disklabel\n"
+  "c\ttoggle the dos compatibility flag\n"
+  "d\tdelete a partition\n"
+  "l\tlist known partition types\n"
+  "n\tadd a new partition\n"
+  "o\tcreate a new empty DOS partition table\n"
+  "p\tprint the partition table\n"
+  "q\tquit without saving changes\n"
+  "s\tcreate a new empty Sun disklabel\n"
+  "t\tchange a partition's system id\n"
+  "u\tchange display/entry units\n"
+  "v\tverify the partition table\n"
+  "w\twrite table to disk and exit\n"
+  "x\textra functionality (experts only)\n");
 }
 
 static void print_xmenu(void)
 {
-  xprintf("b\tmove beginning of data in a partition\n");
-  xprintf("c\tchange number of cylinders\n");
-  xprintf("d\tprint the raw data in the partition table\n");
-  xprintf("e\tlist extended partitions\n");
-  xprintf("f\tfix partition order\n");    
-  xprintf("h\tchange number of heads\n");
-  xprintf("p\tprint the partition table\n");
-  xprintf("q\tquit without saving changes\n");
-  xprintf("r\treturn to main menu\n");
-  xprintf("s\tchange number of sectors/track\n");
-  xprintf("v\tverify the partition table\n");
-  xprintf("w\twrite table to disk and exit\n");
+  xprintf("b\tmove beginning of data in a partition\n"
+  "c\tchange number of cylinders\n"
+  "d\tprint the raw data in the partition table\n"
+  "e\tlist extended partitions\n"
+  "f\tfix partition order\n"  
+  "h\tchange number of heads\n"
+  "p\tprint the partition table\n"
+  "q\tquit without saving changes\n"
+  "r\treturn to main menu\n"
+  "s\tchange number of sectors/track\n"
+  "v\tverify the partition table\n"
+  "w\twrite table to disk and exit\n");
 }
 
 static void expert_menu(void)
