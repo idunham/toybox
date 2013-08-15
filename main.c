@@ -13,6 +13,7 @@
 #define OLDTOY(name, oldname, opts, flags) {#name, oldname##_main, opts, flags},
 
 struct toy_list toy_list[] = {
+#include "generated/oldtoys.h"
 #include "generated/newtoys.h"
 };
 
