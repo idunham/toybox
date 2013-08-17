@@ -12,7 +12,7 @@ config XZCAT
   bool "xzcat"
   default n
   help
-    usage: xzcat [filename...]
+    usage: xzcat [FILE...]
     
     Decompress listed files to stdout. Use stdin if no files listed.
 
