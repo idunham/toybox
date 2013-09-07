@@ -123,6 +123,7 @@ void xmkpath(char *path, int mode);
 void xsetuid(uid_t uid);
 char *xreadlink(char *name);
 long xparsetime(char *arg, long units, long *fraction);
+void xpidfile(char *name);
 
 // lib.c
 void verror_msg(char *msg, int err, va_list va);
@@ -134,15 +135,11 @@ ssize_t readall(int fd, void *buf, size_t len);
 ssize_t writeall(int fd, void *buf, size_t len);
 off_t lskip(int fd, off_t offset);
 struct string_list **splitpath(char *path, struct string_list **list);
-char *readfile(char *name);
+char *readfile(char *name, char *buf, off_t len);
 void msleep(long miliseconds);
 int64_t peek(void *ptr, int size);
 void poke(void *ptr, uint64_t val, int size);
 struct string_list *find_in_path(char *path, char *filename);
-void utoa_to_buf(unsigned n, char *buf, unsigned buflen);
-void itoa_to_buf(int n, char *buf, unsigned buflen);
-char *utoa(unsigned n);
-char *itoa(int n);
 long atolx(char *c);
 int numlen(long l);
 int stridx(char *haystack, char needle);
@@ -161,7 +158,6 @@ void crc_init(unsigned int *crc_table, int little_endian);
 void terminal_size(unsigned *x, unsigned *y);
 int yesno(char *prompt, int def);
 void for_each_pid_with_name_in(char **names, int (*callback)(pid_t pid, char *name));
-unsigned long xstrtoul(const char *nptr, char **endptr, int base);
 
 // net.c
 int xsocket(int domain, int type, int protocol);
@@ -176,7 +172,7 @@ struct mtab_list {
   char type[0];
 };
 
-struct mtab_list *xgetmountlist(void);
+struct mtab_list *xgetmountlist(char *path);
 
 void bunzipStream(int src_fd, int dst_fd);
 

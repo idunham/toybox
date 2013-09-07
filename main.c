@@ -20,7 +20,7 @@ struct toy_list toy_list[] = {
 
 struct toy_context toys;
 union global_union this;
-char toybuf[4096];
+char toybuf[4096], libbuf[4096];
 
 struct toy_list *toy_find(char *name)
 {
@@ -161,7 +161,7 @@ int main(int argc, char *argv[])
 {
   if (CFG_TOYBOX_I18N) setlocale(LC_ALL, "");
 
-  if (!CFG_TOYBOX_SINGLE) {
+  if (CFG_TOYBOX) {
     // Trim path off of command name
     *argv = basename(*argv);
 

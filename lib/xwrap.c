@@ -127,7 +127,7 @@ void xexec_optargs(int skip)
 // with a path isn't a builtin, so /bin/sh won't match the builtin sh.
 void xexec(char **argv)
 {
-  if (!CFG_TOYBOX_SINGLE) toy_exec(argv);
+  if (CFG_TOYBOX) toy_exec(argv);
   execvp(argv[0], argv);
 
   perror_exit("exec %s", argv[0]);
@@ -425,7 +425,7 @@ char *xreadlink(char *name)
 
 char *xreadfile(char *name)
 {
-  char *buf = readfile(name);
+  char *buf = readfile(name, 0, 0);
   if (!buf) perror_exit("xreadfile %s", name);
   return buf;
 }
@@ -452,7 +452,7 @@ void xpidfile(char *name)
   sprintf(pidfile, "/var/run/%s.pid", name);
   // Try three times to open the sucker.
   for (i=0; i<3; i++) {
-    fd = open(pidfile, O_CREAT|O_EXCL, 0644);
+    fd = open(pidfile, O_CREAT|O_EXCL|O_WRONLY, 0644);
     if (fd != -1) break;
 
     // If it already existed, read it.  Loop for race condition.
