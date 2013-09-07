@@ -2,7 +2,7 @@
  *
  * Written 2013 AD by Isaac Dunham; this code is placed under the 
  * same license as toybox or as CC0, at your option.
-USE_CPIO(NEWTOY(cpio, "H:iot))
+USE_CPIO(NEWTOY(cpio, "H:iot", TOYFLAG_BIN))
 
 config CPIO
   bool "cpio"
@@ -15,7 +15,7 @@ config CPIO
     -o  create archive (stdin is a list of files, stdout is an archive)
     -t  list files (stdin is an archive, stdout is a list of files)
     -H fmt   Write archive in specified format:
-    newc  new character format
+    newc  new character format (default)
 */
 #define FOR_cpio
 #include "toys.h"
@@ -68,7 +68,7 @@ struct cpio_newc_header {
 void write_cpio_member(int fd, char *name)
 {
   size_t out = 0;
-  struct cpio_newc_header hdr;
+  struct cpio_newc_header *hdr;
   hdr = malloc(sizeof(struct cpio_newc_header));
   memset(&hdr, '0', sizeof(hdr));
   struct stat buf;
@@ -89,5 +89,8 @@ void write_cpio_member(int fd, char *name)
 
 void cpio_main(void)
 {
+  int fd;
+  fd = xopen("main.c", O_RDONLY);
+  write_cpio_member(fd, "main.c");
   error_exit("Sorry, cpio isn't implemented yet");
 }
