@@ -33,6 +33,19 @@ void *llist_pop(void *list)
   return (void *)next;
 }
 
+void *dlist_pop(void *list)
+{
+  struct double_list **pdlist = (struct double_list **)list, *dlist = *pdlist;
+
+  if (dlist->next == dlist) *pdlist = 0;
+  else {
+    dlist->next->prev = dlist->prev;
+    dlist->prev->next = *pdlist = dlist->next;
+  }
+
+  return dlist;
+}
+
 void dlist_add_nomalloc(struct double_list **list, struct double_list *new)
 {
   if (*list) {

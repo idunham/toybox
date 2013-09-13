@@ -36,7 +36,8 @@ struct double_list {
 };
 
 void llist_traverse(void *list, void (*using)(void *data));
-void *llist_pop(void *list);  // actually void **list, but the compiler's dumb
+void *llist_pop(void *list);  // actually void **list
+void *dlist_pop(void *list);  // actually struct double_list **list
 void dlist_add_nomalloc(struct double_list **list, struct double_list *new);
 struct double_list *dlist_add(struct double_list **list, char *data);
 
@@ -157,7 +158,7 @@ void replace_tempfile(int fdin, int fdout, char **tempname);
 void crc_init(unsigned int *crc_table, int little_endian);
 void terminal_size(unsigned *x, unsigned *y);
 int yesno(char *prompt, int def);
-void for_each_pid_with_name_in(char **names, int (*callback)(pid_t pid, char *name));
+void names_to_pid(char **names, int (*callback)(pid_t pid, char *name));
 
 // net.c
 int xsocket(int domain, int type, int protocol);
