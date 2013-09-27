@@ -50,7 +50,7 @@ void loopfiles_stdin(void (*function)(int fd, char *name))
   }
 }
 
-struct cpio_newc_header {
+struct newc_header {
   char    c_magic[6];
   char    c_ino[8];
   char    c_mode[8];
@@ -69,13 +69,13 @@ struct cpio_newc_header {
 
 void write_cpio_member(int fd, char *name, struct stat buf)
 {
-  struct cpio_newc_header *hdr;
+  struct newc_header *hdr;
   size_t out = 0;
   unsigned int n = 0x00000000, nlen = strlen(name);
 
-  hdr = malloc(sizeof(struct cpio_newc_header) + 1);
-  memset(hdr, '0', sizeof(struct cpio_newc_header));
-  snprintf((char *)(hdr), sizeof(struct cpio_newc_header)+1, 
+  hdr = malloc(sizeof(struct newc_header) + 1);
+  memset(hdr, '0', sizeof(struct newc_header));
+  snprintf((char *)(hdr), sizeof(struct newc_header)+1, 
           "070701%08X%08X" "%08X%08X"
 	  "%08X%08X%08X"
 	   "%08X%08X" "%08X%08X%08X00000000",
@@ -83,7 +83,7 @@ void write_cpio_member(int fd, char *name, struct stat buf)
 	   buf.st_nlink, (uint32_t)(buf.st_mtime), (uint32_t)(buf.st_size), 
 	   major(buf.st_dev), minor(buf.st_dev),
            major(buf.st_rdev), minor(buf.st_rdev), nlen+1);
-  write(1, hdr, sizeof(struct cpio_newc_header));
+  write(1, hdr, sizeof(struct newc_header));
   write(1, name, nlen);
   write(1, &n, 4 - ((nlen + 2) % 4));
   for (; (lseek(fd, 0, SEEK_CUR) < (uint32_t)(buf.st_size));) {
@@ -103,6 +103,63 @@ void write_cpio_call(int fd, char *name)
   write_cpio_member(fd, name, buf);
 }
 
+//convert hex to uint; mostly to allow using bits of non-terminated strings
+unsigned int htou(char * hex)
+{
+  unsigned int ret = 0, i = 0;
+  for (;(i <8 || hex[i]);) {
+     ret *= 16;
+     switch(hex[i]) { 
+     case '0':
+       break;
+     case '1': 
+     case '2': 
+     case '3': 
+     case '4': 
+     case '5': 
+     case '6': 
+     case '7': 
+     case '8': 
+     case '9': 
+       ret += hex[i] - '1';
+       break;
+     case 'A': 
+     case 'B': 
+     case 'C': 
+     case 'D': 
+     case 'E': 
+     case 'F': 
+       ret += hex[i] - 'A';
+       break;
+     }
+  }
+}
+
+#define READ_VERBOSE 1
+#define READ_EXTRACT 2
+int read_cpio_member(int fd, int how)
+{
+  uint32_t nsize, fsize, mode;
+  int pad, ofd = 0; 
+  struct newc_header hdr;
+  char *name;
+
+  xreadall(fd, &hdr, sizeof(struct newc_header));
+  //here we store anything we'll use, or set it up...
+  nsize = htou(hdr.c_namesize);
+  fsize = htou(hdr.c_filesize);
+  mode = htou(hdr.c_mode);
+  //and now read the name
+  name = xmalloc(nsize);
+  if (!strcmp("TRAILER!!!", name)) return 0;
+  pad = 4 - ((readall(fd, name, nsize) + 2) % 4); 
+  if (how | READ_EXTRACT) ofd = creat(name, (mode_t)mode);
+  if (how | READ_VERBOSE && (ofd > 0)) puts(name);
+  //and then the file
+  memset(toybuf, 0, sizeof(toybuf));
+  xread(fd, toybuf, nsize);
+}
+
 void cpio_main(void)
 {
   switch (toys.optflags & (FLAG_i | FLAG_o | FLAG_t)) {
@@ -112,8 +169,10 @@ void cpio_main(void)
       stat("/dev/null", &fake);
       write_cpio_member(open("/dev/null", O_RDONLY), "TRAILER!!!", fake);
       write(1, toybuf, 4096);
-
-    break;
+      break;
+    case FLAG_t:
+      read_cpio_member(1, READ_VERBOSE);
+      break;
   default: 
   error_exit("Bad mix of flags");
   }
