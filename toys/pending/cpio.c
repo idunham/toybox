@@ -107,7 +107,8 @@ void write_cpio_call(int fd, char *name)
 unsigned int htou(char * hex)
 {
   unsigned int ret = 0, i = 0;
-  for (;(i <8 || hex[i]);) {
+
+  for (;(i < 8 && hex[i]);) {
      ret *= 16;
      switch(hex[i]) { 
      case '0':
@@ -121,7 +122,7 @@ unsigned int htou(char * hex)
      case '7': 
      case '8': 
      case '9': 
-       ret += hex[i] - '1';
+       ret += hex[i] - '1' + 1;
        break;
      case 'A': 
      case 'B': 
@@ -129,9 +130,10 @@ unsigned int htou(char * hex)
      case 'D': 
      case 'E': 
      case 'F': 
-       ret += hex[i] - 'A';
+       ret += hex[i] - 'A' + 10;
        break;
      }
+     i++;
   }
   return ret;
 }
@@ -169,7 +171,7 @@ int read_cpio_member(int fd, int how)
     memset(toybuf, 0, sizeof(toybuf));
     i = readall(fd, toybuf, (fsize>sizeof(toybuf)) ? sizeof(toybuf) : fsize);
     if (i < 1) return -1;
-    xwrite(ofd, toybuf, i);
+    if (ofd > 0) xwrite(ofd, toybuf, i);
     fsize -= i;
   }
   if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
@@ -188,15 +190,13 @@ void cpio_main(void)
   switch (toys.optflags & (FLAG_i | FLAG_o | FLAG_t)) {
     case FLAG_o:
       loopfiles_stdin(write_cpio_call);
-      struct stat fake;
-      stat("/dev/null", &fake);
-      write_cpio_member(open("/dev/null", O_RDONLY), "TRAILER!!!", fake);
-      write(1, toybuf, 4096);
+      write(1, "0707010000000000000000000000000000000000000001"
+      "0000000000000000000000000000000000000000000000000000000B00000000TRAILER!!!\0\0\0", 124);
       break;
     case FLAG_i:
-      read_cpio_archive(1, READ_EXTRACT);
+      read_cpio_archive(0, READ_EXTRACT);
     case FLAG_t:
-      read_cpio_archive(1, READ_VERBOSE);
+      read_cpio_archive(0, READ_VERBOSE);
       break;
   default: 
   error_exit("Must use one of -iot");
