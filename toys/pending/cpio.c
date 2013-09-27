@@ -133,10 +133,16 @@ unsigned int htou(char * hex)
        break;
      }
   }
+  return ret;
 }
 
 #define READ_VERBOSE 1
 #define READ_EXTRACT 2
+/* Read one cpio record.
+ * Returns -1 for error (in case we support multiple archives),
+ * 0 for last record,
+ * 1 for "continue".
+ */
 int read_cpio_member(int fd, int how)
 {
   uint32_t nsize, fsize, mode;
@@ -147,17 +153,27 @@ int read_cpio_member(int fd, int how)
   xreadall(fd, &hdr, sizeof(struct newc_header));
   //here we store anything we'll use, or set it up...
   nsize = htou(hdr.c_namesize);
+  name = xmalloc(nsize);
+  if (readall(fd, name, nsize) < nsize) return -1;
+  if (!strcmp("TRAILER!!!", name)) return 0;
   fsize = htou(hdr.c_filesize);
   mode = htou(hdr.c_mode);
-  //and now read the name
-  name = xmalloc(nsize);
-  if (!strcmp("TRAILER!!!", name)) return 0;
-  pad = 4 - ((readall(fd, name, nsize) + 2) % 4); 
+  pad = 4 - ((nsize + 2) % 4); // 2 == sizeof(struct newc_header) % 4
+  if (pad < 4) xreadall(fd, toybuf, pad);
   if (how | READ_EXTRACT) ofd = creat(name, (mode_t)mode);
-  if (how | READ_VERBOSE && (ofd > 0)) puts(name);
+  if (how | READ_VERBOSE && (ofd > 1)) puts(name);
   //and then the file
-  memset(toybuf, 0, sizeof(toybuf));
-  xread(fd, toybuf, nsize);
+  pad = 4 - (fsize % 4);
+  while (fsize) {
+    int i;
+    memset(toybuf, 0, sizeof(toybuf));
+    i = readall(fd, toybuf, (fsize>sizeof(toybuf)) ? sizeof(toybuf) : fsize);
+    if (i < 1) return -1;
+    xwrite(ofd, toybuf, i);
+    fsize -= i;
+  }
+  if (pad < 4) xreadall(fd, toybuf, pad);
+  return 1;
 }
 
 void cpio_main(void)
