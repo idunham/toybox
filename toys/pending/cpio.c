@@ -159,7 +159,7 @@ int read_cpio_member(int fd, int how)
   fsize = htou(hdr.c_filesize);
   mode = htou(hdr.c_mode);
   pad = 4 - ((nsize + 2) % 4); // 2 == sizeof(struct newc_header) % 4
-  if (pad < 4) xreadall(fd, toybuf, pad);
+  if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
   if (how | READ_EXTRACT) ofd = creat(name, (mode_t)mode);
   if (how | READ_VERBOSE && (ofd > 1)) puts(name);
   //and then the file
@@ -172,8 +172,15 @@ int read_cpio_member(int fd, int how)
     xwrite(ofd, toybuf, i);
     fsize -= i;
   }
-  if (pad < 4) xreadall(fd, toybuf, pad);
+  if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
   return 1;
+}
+
+void read_cpio_archive(int fd, int how)
+{
+  for(;;) {
+    if (read_cpio_member(fd, how) < 1) return;
+  }
 }
 
 void cpio_main(void)
@@ -186,10 +193,12 @@ void cpio_main(void)
       write_cpio_member(open("/dev/null", O_RDONLY), "TRAILER!!!", fake);
       write(1, toybuf, 4096);
       break;
+    case FLAG_i:
+      read_cpio_archive(1, READ_EXTRACT);
     case FLAG_t:
-      read_cpio_member(1, READ_VERBOSE);
+      read_cpio_archive(1, READ_VERBOSE);
       break;
   default: 
-  error_exit("Bad mix of flags");
+  error_exit("Must use one of -iot");
   }
 }
