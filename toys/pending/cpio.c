@@ -156,10 +156,12 @@ unsigned int htou(char * hex)
  */
 int read_cpio_member(int fd, int how)
 {
-  uint32_t nsize, fsize, mode;
+  uint32_t nsize, fsize;
+  mode_t mode = 0;
   int pad, ofd = 0; 
   struct newc_header hdr;
   char *name;
+  dev_t dev = 0;
 
   xreadall(fd, &hdr, sizeof(struct newc_header));
   //here we store anything we'll use, or set it up...
@@ -168,11 +170,18 @@ int read_cpio_member(int fd, int how)
   if (readall(fd, name, nsize) < nsize) return -1;
   if (!strcmp("TRAILER!!!", name)) return 0;
   fsize = htou(hdr.c_filesize);
-  mode = htou(hdr.c_mode);
+  mode += htou(hdr.c_mode);
   pad = 4 - ((nsize + 2) % 4); // 2 == sizeof(struct newc_header) % 4
   if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
   if (how & READ_EXTRACT) {
-    ofd = creat(name, (mode_t)mode);
+    if (S_ISDIR(mode)) {
+      ofd = mkdir(name, mode);
+    } else if (S_ISBLK(mode)||S_ISCHR(mode)||S_ISFIFO(mode)||S_ISSOCK(mode)) {
+      dev = makedev(htou(hdr.c_rdevmajor),htou(hdr.c_rdevminor));
+      ofd = mknod(name, mode, dev);
+    } else {
+      ofd = creat(name, mode);
+    }
     if (ofd == -1) {
       error_msg("could not create %s", name);
       toys.exitval |= 1;
