@@ -147,8 +147,6 @@ unsigned int htou(char * hex)
   return ret;
 }
 
-#define READ_VERBOSE 1
-#define READ_EXTRACT 2
 /* Read one cpio record.
  * Returns -1 for error (in case we support multiple archives),
  * 0 for last record,
@@ -164,7 +162,6 @@ int read_cpio_member(int fd, int how)
   dev_t dev = 0;
 
   xreadall(fd, &hdr, sizeof(struct newc_header));
-  //here we store anything we'll use, or set it up...
   nsize = htou(hdr.c_namesize);
   name = xmalloc(nsize);
   if (readall(fd, name, nsize) < nsize) return -1;
@@ -173,7 +170,7 @@ int read_cpio_member(int fd, int how)
   mode += htou(hdr.c_mode);
   pad = 4 - ((nsize + 2) % 4); // 2 == sizeof(struct newc_header) % 4
   if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
-  if (how & READ_EXTRACT) {
+  if (how & 1) {
     if (S_ISDIR(mode)) {
       ofd = mkdir(name, mode);
     } else if (S_ISBLK(mode)||S_ISCHR(mode)||S_ISFIFO(mode)||S_ISSOCK(mode)) {
@@ -187,8 +184,7 @@ int read_cpio_member(int fd, int how)
       toys.exitval |= 1;
     }
   }
-  if (how & READ_VERBOSE) puts(name);
-  //and then the file
+  if (how & 2) puts(name);
   pad = 4 - (fsize % 4);
   while (fsize) {
     int i;
@@ -214,14 +210,14 @@ void cpio_main(void)
   switch (toys.optflags & (FLAG_i | FLAG_o | FLAG_t)) {
     case FLAG_o:
       loopfiles_stdin(write_cpio_call);
-      write(1, "0707010000000000000000000000000000000000000001"
-      "0000000000000000000000000000000000000000000000000000000B00000000TRAILER!!!\0\0\0", 124);
+      write(1, "07070100000000000000000000000000000000000000010000000000000000"
+      "000000000000000000000000000000000000000B00000000TRAILER!!!\0\0\0", 124);
       break;
     case FLAG_i:
-      read_cpio_archive(0, READ_EXTRACT);
+      read_cpio_archive(0, 1);
     case FLAG_t:
     case (FLAG_t | FLAG_i):
-      read_cpio_archive(0, READ_VERBOSE);
+      read_cpio_archive(0, 2);
       break;
   default: 
   error_exit("Must use one of -iot");
