@@ -71,10 +71,13 @@ void write_cpio_member(int fd, char *name, struct stat buf)
 {
   struct newc_header *hdr;
   size_t out = 0;
-  unsigned int n = 0x00000000, nlen = strlen(name);
+  unsigned int n = 0x00000000, nlen = strlen(name) + 1;
 
   hdr = malloc(sizeof(struct newc_header) + 1);
   memset(hdr, '0', sizeof(struct newc_header));
+  if (S_ISDIR(buf.st_mode) || S_ISBLK(buf.st_mode) || S_ISCHR(buf.st_mode)
+     || S_ISFIFO(buf.st_mode) || S_ISSOCK(buf.st_mode)) 
+    buf.st_size = 0;
   snprintf((char *)(hdr), sizeof(struct newc_header)+1, 
           "070701%08X%08X" "%08X%08X"
 	  "%08X%08X%08X"
@@ -82,18 +85,24 @@ void write_cpio_member(int fd, char *name, struct stat buf)
 	   (unsigned int)(buf.st_ino), buf.st_mode, buf.st_uid, buf.st_gid, 
 	   buf.st_nlink, (uint32_t)(buf.st_mtime), (uint32_t)(buf.st_size), 
 	   major(buf.st_dev), minor(buf.st_dev),
-           major(buf.st_rdev), minor(buf.st_rdev), nlen+1);
+           major(buf.st_rdev), minor(buf.st_rdev), nlen);
   write(1, hdr, sizeof(struct newc_header));
   write(1, name, nlen);
-  write(1, &n, 4 - ((nlen + 2) % 4));
-  for (; (lseek(fd, 0, SEEK_CUR) < (uint32_t)(buf.st_size));) {
-    out = read(fd, toybuf, sizeof(toybuf));
-    if (out > 0) { 
-      write(1, toybuf, out);
+  if ((nlen + 2) % 4) write(1, &n, 4 - ((nlen + 2) % 4)); 
+  if (S_ISLNK(buf.st_mode)) {
+    ssize_t llen = readlink(name, toybuf, sizeof(toybuf) - 1);
+    if (llen > 0) {
+      toybuf[llen] = '\0';
+      write(1, toybuf, buf.st_size);
     }
+  } else if (buf.st_size) {
+    for (; (lseek(fd, 0, SEEK_CUR) < (uint32_t)(buf.st_size));) {
+      out = read(fd, toybuf, sizeof(toybuf));
+      if (out > 0) write(1, toybuf, out);
     if (errno || out < sizeof(toybuf)) break;
+    }
   }
-  write(1, &n, 4 - (buf.st_size % 4));
+  if (buf.st_size % 4) write(1, &n, 4 - (buf.st_size % 4));
 }
 
 void write_cpio_call(int fd, char *name)
@@ -162,8 +171,14 @@ int read_cpio_member(int fd, int how)
   mode = htou(hdr.c_mode);
   pad = 4 - ((nsize + 2) % 4); // 2 == sizeof(struct newc_header) % 4
   if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
-  if (how | READ_EXTRACT) ofd = creat(name, (mode_t)mode);
-  if (how | READ_VERBOSE && (ofd > 1)) puts(name);
+  if (how & READ_EXTRACT) {
+    ofd = creat(name, (mode_t)mode);
+    if (ofd == -1) {
+      error_msg("could not create %s", name);
+      toys.exitval |= 1;
+    }
+  }
+  if (how & READ_VERBOSE) puts(name);
   //and then the file
   pad = 4 - (fsize % 4);
   while (fsize) {
@@ -196,6 +211,7 @@ void cpio_main(void)
     case FLAG_i:
       read_cpio_archive(0, READ_EXTRACT);
     case FLAG_t:
+    case (FLAG_t | FLAG_i):
       read_cpio_archive(0, READ_VERBOSE);
       break;
   default: 
