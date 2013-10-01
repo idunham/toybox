@@ -199,6 +199,7 @@ int read_cpio_member(int fd, int how)
       toys.exitval |= 1;
     }
   }
+  errno = 0;
   if (how & 2) puts(name);
   while (fsize) {
     int i;
