@@ -108,7 +108,7 @@ void write_cpio_member(int fd, char *name, struct stat buf)
 void write_cpio_call(int fd, char *name)
 {
   struct stat buf;
-  if (stat(name, &buf) == -1) return;
+  if (lstat(name, &buf) == -1) return;
   write_cpio_member(fd, name, buf);
 }
 
