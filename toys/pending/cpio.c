@@ -148,8 +148,7 @@ unsigned int htou(char * hex)
 }
 
 /* Read one cpio record.
- * Returns -1 for error (in case we support multiple archives),
- * 0 for last record,
+ * Returns 0 for last record,
  * 1 for "continue".
  */
 int read_cpio_member(int fd, int how)
@@ -164,12 +163,12 @@ int read_cpio_member(int fd, int how)
   xreadall(fd, &hdr, sizeof(struct newc_header));
   nsize = htou(hdr.c_namesize);
   name = xmalloc(nsize);
-  if (readall(fd, name, nsize) < nsize) return -1;
+  xreadall(fd, name, nsize);
   if (!strcmp("TRAILER!!!", name)) return 0;
   fsize = htou(hdr.c_filesize);
   mode += htou(hdr.c_mode);
   pad = 4 - ((nsize + 2) % 4); // 2 == sizeof(struct newc_header) % 4
-  if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
+  if (pad < 4) xreadall(fd, toybuf, pad);
   if (how & 1) {
     if (S_ISDIR(mode)) {
       ofd = mkdir(name, mode);
@@ -190,18 +189,18 @@ int read_cpio_member(int fd, int how)
     int i;
     memset(toybuf, 0, sizeof(toybuf));
     i = readall(fd, toybuf, (fsize>sizeof(toybuf)) ? sizeof(toybuf) : fsize);
-    if (i < 1) return -1;
-    if (ofd > 0) xwrite(ofd, toybuf, i);
+    if (i < 1) error_exit("archive too short");
+    if (ofd > 0) writeall(ofd, toybuf, i);
     fsize -= i;
   }
-  if (pad < 4 && (pad - readall(fd, toybuf, pad)) > 0) return -1;
+  if (pad < 4) xreadall(fd, toybuf, pad);
   return 1;
 }
 
 void read_cpio_archive(int fd, int how)
 {
   for(;;) {
-    if (read_cpio_member(fd, how) < 1) return;
+    if (!read_cpio_member(fd, how)) return;
   }
 }
 
@@ -220,6 +219,6 @@ void cpio_main(void)
       read_cpio_archive(0, 2);
       break;
   default: 
-  error_exit("Must use one of -iot");
+  error_exit("must use one of -iot");
   }
 }
