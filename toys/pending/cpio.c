@@ -169,9 +169,25 @@ int read_cpio_member(int fd, int how)
   mode += htou(hdr.c_mode);
   pad = 4 - ((nsize + 2) % 4); // 2 == sizeof(struct newc_header) % 4
   if (pad < 4) xreadall(fd, toybuf, pad);
+  pad = 4 - (fsize % 4);
   if (how & 1) {
     if (S_ISDIR(mode)) {
       ofd = mkdir(name, mode);
+    } else if (S_ISLNK(mode)) {
+      memset(toybuf, 0, sizeof(toybuf));
+      if (fsize < sizeof(toybuf)) {
+        pad = readall(fd, toybuf, fsize); 
+	if (pad < fsize) error_exit("short archive");
+	pad = 4 - (fsize % 4);
+	fsize = 0;
+        if (symlink(toybuf, name)) {
+	  perror_msg("could not write link %s", name);
+	  toys.exitval |= 1;
+	}
+      } else {
+        perror_msg("link too long: %s", name);
+	toys.exitval |= 1;
+      }
     } else if (S_ISBLK(mode)||S_ISCHR(mode)||S_ISFIFO(mode)||S_ISSOCK(mode)) {
       dev = makedev(htou(hdr.c_rdevmajor),htou(hdr.c_rdevminor));
       ofd = mknod(name, mode, dev);
@@ -184,7 +200,6 @@ int read_cpio_member(int fd, int how)
     }
   }
   if (how & 2) puts(name);
-  pad = 4 - (fsize % 4);
   while (fsize) {
     int i;
     memset(toybuf, 0, sizeof(toybuf));
