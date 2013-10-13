@@ -69,11 +69,11 @@ struct newc_header {
 
 void write_cpio_member(int fd, char *name, struct stat buf)
 {
-  struct newc_header *hdr;
+  char ahdr[sizeof(struct newc_header) + 1];
+  struct newc_header *hdr = (struct newc_header *)ahdr;
   size_t out = 0;
   unsigned int n = 0x00000000, nlen = strlen(name) + 1;
 
-  hdr = malloc(sizeof(struct newc_header) + 1);
   memset(hdr, '0', sizeof(struct newc_header));
   if (S_ISDIR(buf.st_mode) || S_ISBLK(buf.st_mode) || S_ISCHR(buf.st_mode)
      || S_ISFIFO(buf.st_mode) || S_ISSOCK(buf.st_mode)) 
