@@ -482,32 +482,35 @@ void crc_init(unsigned int *crc_table, int little_endian)
 }
 
 // Quick and dirty query size of terminal, doesn't do ANSI probe fallback.
-// set *x=0 and *y=0 before calling to detect failure to set either, or
-// x=80 y=25 to provide defaults
+// set x=80 y=25 before calling to provide defaults. Returns 0 if couldn't
+// determine size.
 
-void terminal_size(unsigned *x, unsigned *y)
+int terminal_size(unsigned *xx, unsigned *yy)
 {
   struct winsize ws;
-  int i;
+  unsigned i, x = 0, y = 0;
+  char *s;
 
-  //memset(&ws, 0, sizeof(ws));
+  // stdin, stdout, stderr
   for (i=0; i<3; i++) {
-    if (ioctl(i, TIOCGWINSZ, &ws)) continue;
-    if (x) *x = ws.ws_col;
-    if (y) *y = ws.ws_row;
-  }
-  if (x) {
-    char *s = getenv("COLUMNS");
+    memset(&ws, 0, sizeof(ws));
+    if (!ioctl(i, TIOCGWINSZ, &ws)) {
+      if (ws.ws_col) x = ws.ws_col;
+      if (ws.ws_row) y = ws.ws_row;
 
-    i = s ? atoi(s) : 0;
-    if (i>0) *x = i;
+      break;
+    }
   }
-  if (y) {
-    char *s = getenv("ROWS");
+  s = getenv("COLUMNS");
+  if (s) sscanf(s, "%u", &x);
+  s = getenv("ROWS");
+  if (s) sscanf(s, "%u", &y);
 
-    i = s ? atoi(s) : 0;
-    if (i>0) *y = i;
-  }
+  // Never return 0 for either value, leave it at default instead.
+  if (xx && x) *xx = x;
+  if (yy && y) *yy = y;
+
+  return x || y;
 }
 
 int yesno(char *prompt, int def)

@@ -3,17 +3,6 @@
  * Copyright 2006 Rob Landley <rob@landley.net>
  */
 
-// Unfortunately, sizeof() doesn't work in a preprocessor test.  TODO.
-
-//#if sizeof(double) <= sizeof(long)
-//typedef double FLOAT;
-//#else
-typedef float FLOAT;
-//#endif
-
-// libc generally has this, but the headers are screwed up
-ssize_t getline(char **lineptr, size_t *n, FILE *stream);
-
 // llist.c
 
 // All these list types can be handled by the same code because first element
@@ -156,9 +145,8 @@ int copy_tempfile(int fdin, char *name, char **tempname);
 void delete_tempfile(int fdin, int fdout, char **tempname);
 void replace_tempfile(int fdin, int fdout, char **tempname);
 void crc_init(unsigned int *crc_table, int little_endian);
-void terminal_size(unsigned *x, unsigned *y);
+int terminal_size(unsigned *x, unsigned *y);
 int yesno(char *prompt, int def);
-void names_to_pid(char **names, int (*callback)(pid_t pid, char *name));
 
 // net.c
 int xsocket(int domain, int type, int protocol);
@@ -186,15 +174,4 @@ char *num_to_sig(int sig);
 mode_t string_to_mode(char *mode_str, mode_t base);
 void mode_to_string(mode_t mode, char *buf);
 
-// password helper functions
-int read_password(char * buff, int buflen, char* mesg);
-int update_password(char *filename, char* username, char* encrypted);
-
-// cut helper functions
-unsigned long get_int_value(const char *numstr, unsigned long lowrange, unsigned long highrange);
-
-// grep helper functions
-char  *astrcat (char *, char *);
-char *xastrcat (char *, char *);
-
-void daemonize(void);
+#include "lib/pending.h"
