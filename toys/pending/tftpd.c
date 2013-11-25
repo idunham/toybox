@@ -163,11 +163,11 @@ RETRY_SEND:
     // if "block size < 512", send ACK and exit.
     if ((pktopcode == TFTPD_OP_ACK) && done) break;
 
-POLL_IN:
+POLL_INPUT:
     pollfds[0].events = POLLIN;
     pollfds[0].fd = TT.sfd;
     poll_ret = poll(pollfds, 1, timeout);
-    if (poll_ret < 0 && (errno == EINTR || errno == ENOMEM)) goto POLL_IN;
+    if (poll_ret < 0 && (errno == EINTR || errno == ENOMEM)) goto POLL_INPUT;
     if (!poll_ret) {
       if (!--retry_count) {
         error_msg("timeout");
@@ -181,7 +181,7 @@ POLL_IN:
         send_errpkt(dstaddr, socklen, "read-error");
         break;
       }
-      if (len < 4) goto POLL_IN;
+      if (len < 4) goto POLL_INPUT;
     } else {
       perror_msg("poll");
       break;
@@ -224,7 +224,7 @@ POLL_IN:
       }
       continue;
     }
-    goto POLL_IN;
+    goto POLL_INPUT;
   } // end of loop
 
 CLEAN_APP:
