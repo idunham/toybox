@@ -12,20 +12,38 @@ config IFCONFIG
   bool "ifconfig"
   default y
   help
-    usage: ifconfig [-a] interface [address]
+    usage: ifconfig [-a] [INTERFACE [ACTION...]]
 
-    Configure network interface.
+    Display or configure network interface.
 
-    [add ADDRESS[/PREFIXLEN]]
-    [del ADDRESS[/PREFIXLEN]]
-    [[-]broadcast [ADDRESS]] [[-]pointopoint [ADDRESS]]
-    [netmask ADDRESS] [dstaddr ADDRESS]
-    [outfill NN] [keepalive NN]
-    [hw ether|infiniband ADDRESS] [metric NN] [mtu NN]
-    [[-]trailers] [[-]arp] [[-]allmulti]
-    [multicast] [[-]promisc] [txqueuelen NN] [[-]dynamic]
-    [mem_start NN] [io_addr NN] [irq NN]
-    [up|down] ...    
+    With no arguments, display active interfaces. First argument is interface
+    to operate on, one argument by itself displays that interface.
+
+    -a	Show all interfaces, not just active ones
+
+    Additional arguments are actions to perform on the interface:
+
+    ADDRESS[/NETMASK] - set IPv4 address (1.2.3.4/5)
+    default - unset ipv4 address
+    add|del ADDRESS[/PREFIXLEN] - add/remove IPv6 address (1111::8888/128)
+    up - enable interface
+    down - disable interface
+
+    netmask|broadcast|pointopoint ADDRESS - set more IPv4 characteristics
+    hw ether|infiniband ADDRESS - set LAN hardware address (AA:BB:CC...)
+    txqueuelen LEN - number of buffered packets before output blocks
+    mtu LEN - size of outgoing packets (Maximum Transmission Unit)
+
+    Flags you can set on an interface (or -remove by prefixing with -):
+    arp - don't use Address Resolution Protocol to map LAN routes
+    promisc - don't discard packets that aren't to this LAN hardware address
+    multicast - force interface into multicast mode if the driver doesn't
+    allmulti - promisc for multicast packets
+
+    Obsolete fields included for historical purposes:
+    irq|io_addr|mem_start ADDR - micromanage obsolete hardware
+    outfill|keepalive INTEGER - SLIP analog dialup line quality monitoring
+    metric INTEGER - added to Linux 0.9.10 with comment "never used", still true
 */
 
 #define FOR_ifconfig
@@ -38,14 +56,6 @@ GLOBALS(
   int sockfd;
 )
 
-typedef struct sockaddr_with_len {
-  union {
-    struct sockaddr sock;
-    struct sockaddr_in sock_in;
-    struct sockaddr_in6 sock_in6;
-  } sock_u;
-} sockaddr_with_len;
-
 //for ipv6 add/del
 struct ifreq_inet6 {
   struct in6_addr ifrinte6_addr;
@@ -53,91 +63,32 @@ struct ifreq_inet6 {
   int ifrinet6_ifindex;
 };
 
-/*
- * use to get the socket address with the given host ip.
- */
-sockaddr_with_len *get_sockaddr(char *host, int port, sa_family_t af)
+// Convert hostname to binary address for AF_INET or AF_INET6
+void get_addrinfo(char *host, sa_family_t af, void *addr)
 {
-  sockaddr_with_len *swl = NULL;
-  in_port_t port_num = htons(port);
-  struct addrinfo hints, *result, *rp;
-  int status;
-  char *s;
-
-  if (!strncmp(host, "local:", 6)) {
-    struct sockaddr_un *sockun;
-
-    swl = xzalloc(sizeof(struct sockaddr_with_len));
-    swl->sock_u.sock.sa_family = AF_UNIX;
-    sockun = (struct sockaddr_un *)&swl->sock_u.sock;
-    xstrncpy(sockun->sun_path, host + 6, sizeof(sockun->sun_path));
-
-    return swl;
-  }
-
-  // [ipv6]:port or exactly one :
-
-  if (*host == '[') {
-    host++;
-    s = strchr(host, ']');
-    if (s && !s[1]) s = 0;
-    else {
-      if (!s || s[1] != ':') error_exit("bad address '%s'", host-1);
-      s++;
-    }
-  } else {
-    s = strrchr(host, ':');
-    if (strchr(host, ':') != s) s = 0;
-  }
-
-  if (s++) {
-    char *ss;
-    unsigned long p = strtoul(s, &ss, 0);
-    if (*ss || p > 65535) error_exit("bad port '%s'", s);
-    port = p;
-  }
+  struct addrinfo hints, *result, *rp = 0;
+  int status, len;
+  char *from;
 
   memset(&hints, 0 , sizeof(struct addrinfo));
   hints.ai_family = af;
   hints.ai_socktype = SOCK_STREAM;
 
   status = getaddrinfo(host, NULL, &hints, &result);
-  if (status) error_exit("bad address '%s' : %s", host, gai_strerror(status));
+  if (!status)
+    for (rp = result; rp; rp = rp->ai_next)
+      if (rp->ai_family == af) break;
+  if (!rp) error_exit("bad address '%s' : %s", host, gai_strerror(status));
 
-  for (rp = result; rp; rp = rp->ai_next) {
-    if (rp->ai_family == AF_INET || rp->ai_family == AF_INET6) {
-      swl = xmalloc(sizeof(struct sockaddr_with_len));
-      memcpy(&swl->sock_u.sock, rp->ai_addr, rp->ai_addrlen);
-      break;
-    }
-  }
+  // ai_addr isn't struct in_addr or in6_addr, it's struct sockaddr. Of course.
+  // You'd think ipv4 and ipv6 would have some basic compatibility, but no.
+  from = ((char *)rp->ai_addr) + 4;
+  if (af == AF_INET6) {
+    len = 16;
+    from += 4;  // skip "flowinfo" field ipv6 puts before address
+  } else len = 4;
+  memcpy(addr, from, len);
   freeaddrinfo(result);
-  if (!rp) error_exit("bad host name");
-
-  if(swl->sock_u.sock.sa_family == AF_INET)
-    swl->sock_u.sock_in.sin_port = port_num;
-  else if(swl->sock_u.sock.sa_family == AF_INET6)
-    swl->sock_u.sock_in6.sin6_port = port_num;
-
-  return swl;
-}
-
-static void set_address(char *host_name, struct ifreq *ifre, int request)
-{
-  struct sockaddr_in *sock_in = (struct sockaddr_in *)&ifre->ifr_addr;
-  sockaddr_with_len *swl = NULL;
-
-  memset(sock_in, 0, sizeof(struct sockaddr_in));
-  sock_in->sin_family = AF_INET;
-
-  //Default 0.0.0.0
-  if(strcmp(host_name, "default") == 0) sock_in->sin_addr.s_addr = INADDR_ANY;
-  else {
-    swl = get_sockaddr(host_name, 0, AF_INET);
-    sock_in->sin_addr = swl->sock_u.sock_in.sin_addr;
-    free(swl);
-  }
-  xioctl(TT.sockfd, request, ifre);
 }
 
 static void display_ifconfig(char *name, int always, unsigned long long val[])
@@ -274,7 +225,7 @@ static void display_ifconfig(char *name, int always, unsigned long long val[])
 
   // non-virtual interface
 
-  if(val) {
+  if (val) {
     char *label[] = {"RX bytes", "RX packets", "errors", "dropped", "overruns",
       "frame", 0, 0, "TX bytes", "TX packets", "errors", "dropped", "overruns",
       "collisions", "carrier", 0, "txqueuelen"};
@@ -345,7 +296,7 @@ static void show_iface(char *iface_name)
       sl->next = ifaces;
       ifaces = sl;
 
-      display_ifconfig(name, toys.optflags & FLAG_a, val);
+      display_ifconfig(sl->str, toys.optflags & FLAG_a, val);
     }
   }
   fclose(fp);
@@ -390,8 +341,6 @@ void ifconfig_main(void)
   struct ifreq ifre;
   int i;
 
-  if(*argv && (strcmp(*argv, "--help") == 0)) show_help();
-  
   TT.sockfd = xsocket(AF_INET, SOCK_DGRAM, 0);
   if(toys.optc < 2) {
     show_iface(*argv);
@@ -404,18 +353,18 @@ void ifconfig_main(void)
 
   // Perform operations on interface
   while(*++argv) {
+    // Table of known operations
     struct argh {
       char *name;
       int on, off; // set, clear
     } try[] = {
+      {0, IFF_UP|IFF_RUNNING, SIOCSIFADDR},
       {"up", IFF_UP|IFF_RUNNING, 0},
       {"down", 0, IFF_UP},
       {"arp", 0, IFF_NOARP},
-      {"trailers", 0, IFF_NOTRAILERS},
       {"promisc", IFF_PROMISC, 0},
       {"allmulti", IFF_ALLMULTI, 0},
       {"multicast", IFF_MULTICAST, 0},
-      {"dynamic", IFF_DYNAMIC, 0},
       {"pointopoint", IFF_POINTOPOINT, SIOCSIFDSTADDR},
       {"broadcast", IFF_BROADCAST, SIOCSIFBRDADDR},
       {"netmask", 0, SIOCSIFNETMASK},
@@ -436,11 +385,95 @@ void ifconfig_main(void)
 
     s += rev;
 
-    for (i = 0; i < sizeof(try)/sizeof(*try); i++) {
+    // "set hardware address" is oddball enough to special case
+    if (!strcmp(*argv, "hw")) {
+      char *hw_addr, *ptr, *p;
+      struct sockaddr *sock = &ifre.ifr_hwaddr;
+      int count = 6;
+
+      ptr = p = (char *)sock->sa_data;
+      memset(sock, 0, sizeof(struct sockaddr));
+      if (!argv[1]) {
+        if (!strcmp("ether", *++argv)) sock->sa_family = ARPHRD_ETHER;
+        else if (!strcmp("infiniband", *argv)) {
+          sock->sa_family = ARPHRD_INFINIBAND;
+          count = 20;
+          p = ptr = toybuf;
+        }
+      }
+      if (!sock->sa_family || !argv[1]) {
+        toys.exithelp++;
+        error_exit("bad hw '%s'", *argv);
+      }
+      hw_addr = *++argv;
+
+      // Parse and verify address.
+      while (*hw_addr && (p-ptr) < count) {
+        int val, len = 0;
+
+        if (*hw_addr == ':') hw_addr++;
+        sscanf(hw_addr, "%2x%n", &val, &len);
+        if (len != 2) break;
+        hw_addr += len;
+        *p++ = val;
+      }
+
+      if ((p-ptr) != count || *hw_addr)
+        error_exit("bad hw-addr '%s'", hw_addr ? hw_addr : "");
+
+      // the linux kernel's "struct sockaddr" (include/linux/socket.h in the
+      // kernel source) only has 14 bytes of sa_data, and an infiniband address
+      // is 20. So if we go through the ioctl, the kernel will truncate
+      // infiniband addresses, meaning we have to go through sysfs instead.
+      if (sock->sa_family == ARPHRD_INFINIBAND && !strchr(ifre.ifr_name, '/')) {
+        int fd;
+
+        sprintf(toybuf, "/sys/class/net/%s/address", ifre.ifr_name);
+        fd = xopen(toybuf, O_RDWR);
+        xwrite(fd, *argv, strlen(*argv));
+        close(fd);
+      } else xioctl(TT.sockfd, SIOCSIFHWADDR, &ifre);
+      continue;
+
+    // Add/remove ipv6 address to interface
+
+    } else if (!strcmp(*argv, "add") || !strcmp(*argv, "del")) {
+      struct ifreq_inet6 {
+        struct in6_addr addr;
+        unsigned prefix;
+        int index;
+      } ifre6;
+      int plen = 128, fd6 = xsocket(AF_INET6, SOCK_DGRAM, 0);
+      char *prefix;
+
+      if (!argv[1]) {
+        toys.exithelp++;
+        error_exit(*argv);
+      }
+
+      prefix = strchr(argv[1], '/');
+      if (prefix) {
+        plen = atolx_range(prefix+1, 0, 128);
+        *prefix = 0;
+      }
+
+      get_addrinfo(argv[1], AF_INET6, &ifre6.addr);
+      xioctl(fd6, SIOCGIFINDEX, &ifre);
+      ifre6.index = ifre.ifr_ifindex;
+      ifre6.prefix = plen;
+      xioctl(fd6, **(argv++)=='a' ? SIOCSIFADDR : SIOCDIFADDR, &ifre6);
+
+      close(fd6);
+      continue;
+    // Iterate through table to find/perform operation
+    } else for (i = 0; i < sizeof(try)/sizeof(*try); i++) {
       struct argh *t = try+i;
       int on = t->on, off = t->off;
 
-      if (strcmp(t->name, s)) continue;
+      if (!t->name) {
+        if (isdigit(**argv) || !strcmp(*argv, "default")) argv--;
+        else continue;
+      } else if (strcmp(t->name, s)) continue;
 
       // Is this an SIOCSI entry?
       if ((off|0xff) == 0x89ff) {
@@ -456,7 +489,15 @@ void ifconfig_main(void)
             poke((on>>16) + (char *)&ifre, l, on&15);
             xioctl(TT.sockfd, off, &ifre);
             break;
-          } else set_address(*argv, &ifre, off);
+          } else if (t->name || !strchr(ifre.ifr_name, ':')) {
+            struct sockaddr_in *si = (struct sockaddr_in *)&ifre.ifr_addr;
+
+            si->sin_family = AF_INET;
+
+            if (!strcmp(*argv, "default")) si->sin_addr.s_addr = INADDR_ANY;
+            else get_addrinfo(*argv, AF_INET, &si->sin_addr);
+            xioctl(TT.sockfd, off, &ifre);
+          }
         }
         off = 0;
       }
@@ -471,79 +512,7 @@ void ifconfig_main(void)
 
       break;
     }
-    if (i != sizeof(try)/sizeof(*try)) continue;
-
-      if (!strcmp(*argv, "hw")) {
-        char *hw_addr, *ptr, *p;
-        struct sockaddr *sock = &ifre.ifr_hwaddr;
-        int count = 6;
-
-        if (!*++argv) show_help();
-
-        memset(sock, 0, sizeof(struct sockaddr));
-        if (!strcmp("ether", *argv)) sock->sa_family = ARPHRD_ETHER;
-        else if (!strcmp("infiniband", *argv)) {
-          sock->sa_family = ARPHRD_INFINIBAND;
-          count = 20;
-        } else {
-          toys.exithelp++;
-          error_exit("bad hw '%s'", *argv);
-        }
-        hw_addr = *++argv;
-
-        ptr = p = (char *) sock->sa_data;
-
-        while (*hw_addr && (p-ptr) < count) {
-          int val, len = 0;
-
-          if (*hw_addr == ':') hw_addr++;
-          sscanf(hw_addr, "%2x%n", &val, &len);
-          if (len != 2) break;
-          hw_addr += len;
-          *p++ = val;
-        }
-
-        if ((p-ptr) != count || *hw_addr)
-          error_exit("bad hw-addr '%s'", hw_addr ? hw_addr : "");
-        xioctl(TT.sockfd, SIOCSIFHWADDR, &ifre);
-
-      // Add/remove ipv6 address to interface
-
-      } else if (!strcmp(*argv, "add") || !strcmp(*argv, "del")) {
-        sockaddr_with_len *swl = NULL;
-        struct ifreq_inet6 ifre6;
-        char *prefix;
-        int plen = 0, sockfd6 = xsocket(AF_INET6, SOCK_DGRAM, 0);
-
-        if (!argv[1]) show_help();
-
-        prefix = strchr(argv[1], '/');
-        if (prefix) {
-          plen = get_int_value(prefix + 1, 0, 128);
-          *prefix = 0;
-        }
-        swl = get_sockaddr(argv[1], 0, AF_INET6);
-        ifre6.ifrinte6_addr = swl->sock_u.sock_in6.sin6_addr;
-        xioctl(sockfd6, SIOCGIFINDEX, &ifre);
-        ifre6.ifrinet6_ifindex = ifre.ifr_ifindex;
-        ifre6.ifrinet6_prefixlen = plen;
-        xioctl(sockfd6, **argv=='a' ? SIOCSIFADDR : SIOCDIFADDR, &ifre6);
-
-        free(swl);
-        close(sockfd6);
-
-        argv++;
-      } else if (isdigit(**argv) || !strcmp(*argv, "default")) {
-          set_address(*argv, &ifre, SIOCSIFADDR);
-          //if the interface name is not an alias; set the flag and continue.
-          if(!strchr(ifre.ifr_name, ':')) {
-            xioctl(TT.sockfd, SIOCGIFFLAGS, &ifre);
-            ifre.ifr_flags |= IFF_UP|IFF_RUNNING;
-            xioctl(TT.sockfd, SIOCSIFFLAGS, &ifre);
-          }
-
-    } else {
-      errno = EINVAL;
+    if (i == sizeof(try)/sizeof(*try)) {
       toys.exithelp++;
       error_exit("bad argument '%s'", *argv);
     }
