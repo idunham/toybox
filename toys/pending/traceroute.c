@@ -355,7 +355,7 @@ void traceroute_main(void)
     + sizeof(struct payload_s) : ICMP_HD_SIZE;
 
   if (toys.optargs[1])
-    TT.msg_len = get_int_value(toys.optargs[1], pack_size, 32768);//max packet size
+    TT.msg_len = atolx_range(toys.optargs[1], pack_size, 32768);//max packet size
 
   TT.msg_len = (TT.msg_len < pack_size) ? pack_size : TT.msg_len;
   TT.recv_sock = xsocket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
