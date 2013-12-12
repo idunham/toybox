@@ -5,8 +5,8 @@
  *
  * No Standard.
  * 
-USE_FTPGET(NEWTOY(ftpget, "<2cvu:p:P:", TOYFLAG_BIN))
-USE_FTPGET(OLDTOY(ftpput,ftpget, "<2vu:p:P:", TOYFLAG_BIN))
+USE_FTPGET(NEWTOY(ftpget, "<2cvu:p:P#<0=21>65535", TOYFLAG_BIN))
+USE_FTPGET(OLDTOY(ftpput,ftpget, "<2vu:p:P#<0=21>65535", TOYFLAG_BIN))
 
 config FTPGET
   bool "ftpget/ftpput"
@@ -22,13 +22,13 @@ config FTPGET
     -v Verbose.
     -u User name.
     -p Password.
-    -P Port Number.
+    -P Port Number (default 21).
 */
 #define FOR_ftpget
 #include "toys.h"
 
 GLOBALS(
-  char *port;
+  long port; //  char *port;
   char *password;
   char *username;
 
@@ -129,18 +129,17 @@ static void send_requests(void)
 static void get_sockaddr(char *host)
 {  
   struct addrinfo hints, *result;
-  char *ptr;
-  int status, port;
+  char *ptr, port[6];
+  int status;
   
   errno = 0;
-  port = strtoul(TT.port, &ptr, 10);
-  if (errno || port > 65535) error_exit("Invalid port, Range is [0-65535]");
+  snprintf(port, 6, "%ld", TT.port);
 
   memset(&hints, 0 , sizeof(struct addrinfo));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
 
-  status = getaddrinfo(host, TT.port, &hints, &result); 
+  status = getaddrinfo(host, port, &hints, &result); 
   if (status) error_exit("bad address '%s' : %s", host, gai_strerror(status));
 
   memcpy(TT.buf, result->ai_addr, result->ai_addrlen);
@@ -272,7 +271,6 @@ void ftpget_main(void)
   if (!(toys.optflags & FLAG_u) && !(toys.optflags & FLAG_p))
     TT.username = TT.password ="anonymous";
 
-  if (!(toys.optflags & FLAG_P)) TT.port = "ftp"; //use default ftp port 21.
   //if continue is not in the command line argument.
   if (TT.isget && !(toys.optflags & FLAG_c)) TT.c = 0;
 
