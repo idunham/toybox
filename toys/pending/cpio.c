@@ -49,7 +49,8 @@ void loopfiles_stdin(void (*function)(int fd, char *name, struct stat st))
     if (name) {
       if (toybuf[strlen(name) - 1] == '\n' ) { 
         toybuf[strlen(name) - 1 ] = '\0';
-        if (lstat(name, &st) == -1) continue;
+        if (lstat(name, &st) == -1) verror_msg(name, errno, NULL);
+	if (errno) continue;
 	fd = open(name, O_RDONLY);
 	if (fd > 0 || !S_ISREG(st.st_mode)) {
           function(fd, name, st);
