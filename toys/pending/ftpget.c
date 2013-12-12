@@ -10,10 +10,10 @@ USE_FTPGET(OLDTOY(ftpput,ftpget, "<2vu:p:P:", TOYFLAG_BIN))
 
 config FTPGET
   bool "ftpget/ftpput"
-  default y
+  default n
   help
-    usage: ftpget [-cv] [-u username -p password -P PortNumber] HOST_NAME [LOCAL_FILENAME] REMOTE_FILENAME
-    usage: ftpput [-v] [-u username -p password -P PortNumber] HOST_NAME [REMOTE_FILENAME] LOCAL_FILENAME
+    usage: ftpget [-cv] [-u USER -p PASSWORD -P PORT] HOST_NAME [LOCAL_FILENAME] REMOTE_FILENAME
+    usage: ftpput [-v] [-u USER -p PASSWORD -P PORT] HOST_NAME [REMOTE_FILENAME] LOCAL_FILENAME
 
     ftpget - Get a remote file from FTP.
     ftpput - Upload a local file on remote machine through FTP.
