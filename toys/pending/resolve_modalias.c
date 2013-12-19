@@ -75,5 +75,5 @@ void resolve_modalias_main(void)
     curr = resolve_name(fil, toys.optargs[i], curr );
     fseek(fil, 0, SEEK_SET);
   }
-  if (names) llist_traverse(names, print_free);
+  if (names && names->next) llist_traverse(names->next, print_free);
 }
