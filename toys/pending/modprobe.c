@@ -150,9 +150,9 @@ static struct arg_list *llist_rev(struct arg_list *list)
 
 /*
  * Returns struct module_s from the data base if found, NULL otherwise.
- * if ps - create module entry, add it to data base and return the same mod.
+ * if add - create module entry, add it to data base and return the same mod.
  */
-static struct module_s *get_mod(char *mod, uint8_t ps)
+static struct module_s *get_mod(char *mod, uint8_t add)
 {
   char name[MODNAME_LEN];
   struct module_s *modentry;
@@ -166,7 +166,7 @@ static struct module_s *get_mod(char *mod, uint8_t ps)
     modentry = (struct module_s *) temp->arg;
     if (!strcmp(modentry->name, name)) return modentry;
   }
-  if (!ps) return NULL;
+  if (!add) return NULL;
   modentry = xzalloc(sizeof(*modentry));
   modentry->name = xstrdup(name);
   llist_add(&TT.dbase[hash], modentry);
@@ -561,7 +561,7 @@ void modprobe_main(void)
       continue;
     }
     do { // Probe all real names for the alias.
-      char *real = llist_pop(&module->rnames);
+      char *real = ((struct arg_list*)llist_pop(&module->rnames))->arg;
       struct module_s *m2 = get_mod(real, 0);
       
       dbg("probing alias %s by realname %s\n", module->name, real);
