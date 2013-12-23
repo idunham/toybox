@@ -109,11 +109,12 @@ void xstat(char *path, struct stat *st);
 char *xabspath(char *path, int exact);
 char *xrealpath(char *path);
 void xchdir(char *path);
+void xchroot(char *path);
 void xmkpath(char *path, int mode);
-void xsetuid(uid_t uid);
 struct passwd *xgetpwuid(uid_t uid);
 struct group *xgetgrgid(gid_t gid);
 struct passwd *xgetpwnam(char *name);
+void xsetuser(struct passwd *pwd);
 char *xreadlink(char *name);
 long xparsetime(char *arg, long units, long *fraction);
 void xpidfile(char *name);
@@ -177,5 +178,6 @@ char *num_to_sig(int sig);
 
 mode_t string_to_mode(char *mode_str, mode_t base);
 void mode_to_string(mode_t mode, char *buf);
+void names_to_pid(char **names, int (*callback)(pid_t pid, char *name));
 
 #include "lib/pending.h"
