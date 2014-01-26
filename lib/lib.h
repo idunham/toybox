@@ -83,7 +83,7 @@ void *xzalloc(size_t size);
 void *xrealloc(void *ptr, size_t size);
 char *xstrndup(char *s, size_t n);
 char *xstrdup(char *s);
-char *xmsprintf(char *format, ...);
+char *xmprintf(char *format, ...);
 void xprintf(char *format, ...);
 void xputs(char *s);
 void xputc(char c);
@@ -102,18 +102,19 @@ size_t xread(int fd, void *buf, size_t len);
 void xreadall(int fd, void *buf, size_t len);
 void xwrite(int fd, void *buf, size_t len);
 off_t xlseek(int fd, off_t offset, int whence);
-char *xreadfile(char *name);
+char *xreadfile(char *name, char *buf, off_t len);
 int xioctl(int fd, int request, void *data);
 char *xgetcwd(void);
 void xstat(char *path, struct stat *st);
 char *xabspath(char *path, int exact);
 char *xrealpath(char *path);
 void xchdir(char *path);
+void xchroot(char *path);
 void xmkpath(char *path, int mode);
-void xsetuid(uid_t uid);
 struct passwd *xgetpwuid(uid_t uid);
 struct group *xgetgrgid(gid_t gid);
 struct passwd *xgetpwnam(char *name);
+void xsetuser(struct passwd *pwd);
 char *xreadlink(char *name);
 long xparsetime(char *arg, long units, long *fraction);
 void xpidfile(char *name);
@@ -177,5 +178,6 @@ char *num_to_sig(int sig);
 
 mode_t string_to_mode(char *mode_str, mode_t base);
 void mode_to_string(mode_t mode, char *buf);
+void names_to_pid(char **names, int (*callback)(pid_t pid, char *name));
 
 #include "lib/pending.h"

@@ -13,6 +13,13 @@ then
   exit 1
 fi
 
+# Respond to V= by echoing command lines as well as running them
+do_loudly()
+{
+  [ ! -z "$V" ] && echo "$@"
+  "$@"
+}
+
 echo "Make generated/config.h from $KCONFIG_CONFIG."
 
 # This long and roundabout sed invocation is to make old versions of sed happy.
@@ -50,7 +57,7 @@ echo "Generate headers from toys/*/*.c..."
 # first element of the array). The rest must be sorted in alphabetical order
 # for fast binary search.
 
-echo "generated/newtoys.h"
+echo -n "generated/newtoys.h "
 
 echo "USE_TOYBOX(NEWTOY(toybox, NULL, TOYFLAG_STAYROOT))" > generated/newtoys.h
 sed -n -e 's/^USE_[A-Z0-9_]*(/&/p' toys/*/*.c \
@@ -59,12 +66,9 @@ sed -n -e 's/^USE_[A-Z0-9_]*(/&/p' toys/*/*.c \
 sed -n -e 's/.*(NEWTOY(\([^,]*\), *\(\("[^"]*"[^,]*\)*\),.*/#define OPTSTR_\1\t\2/p' \
   generated/newtoys.h > generated/oldtoys.h
 
-if [ ! -e generated/mkflags ]
-then
-  $HOSTCC scripts/mkflags.c -o generated/mkflags || exit 1
-fi
+do_loudly $HOSTCC scripts/mkflags.c -o generated/mkflags || exit 1
 
-echo generated/flags.h
+echo -n "generated/flags.h "
 
 # Parse files through C preprocessor twice, once to get flags for current
 # .config and once to get flags for allyesconfig
@@ -113,7 +117,7 @@ function getglobals()
   done
 }
 
-echo "generated/globals.h"
+echo -n "generated/globals.h "
 
 GLOBSTRUCT="$(getglobals)"
 (
@@ -125,19 +129,9 @@ GLOBSTRUCT="$(getglobals)"
 ) > generated/globals.h
 
 echo "generated/help.h"
-# Only recreate generated/help.h if python2 is installed. Does not work with 3.
-PYTHON="$(which python2 || which python2.6 || which python2.7)"
-if [ ! -z "$(grep 'CONFIG_TOYBOX_HELP=y' $KCONFIG_CONFIG)" ];
-then
-  if [ -z "$PYTHON" ];
-  then
-    echo "Python 2.x required to rebuild generated/help.h"
-    # exit 1
-  else
-    echo "Extract help text from Config.in."
-    "$PYTHON" scripts/config2help.py Config.in > generated/help.h || exit 1
-  fi
-fi
+do_loudly $HOSTCC scripts/config2help.c -I . lib/xwrap.c lib/llist.c lib/lib.c \
+  -o generated/config2help && \
+generated/config2help Config.in .config > generated/help.h || exit 1
 
 # Extract a list of toys/*/*.c files to compile from the data in $KCONFIG_CONFIG
 

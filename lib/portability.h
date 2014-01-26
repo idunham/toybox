@@ -96,6 +96,10 @@ int mknodat(int fd, const char *path, mode_t mode, dev_t dev);
 #include <sys/time.h>
 int futimens(int fd, const struct timespec times[2]);
 int utimensat(int fd, const char *path, const struct timespec times[2], int flag);
+
+#ifndef MNT_DETACH
+#define MNT_DETACH 2
+#endif
 #endif
 
 #endif
@@ -141,9 +145,10 @@ int clearenv(void);
 #define SWAP_LE64(x) (x)
 #endif
 
-#if defined(__APPLE__) || defined(__ANDROID__)
+#if defined(__APPLE__) || defined(__ANDROID__) || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 10)
 ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream);
 ssize_t getline(char **lineptr, size_t *n, FILE *stream);
 #endif
 
+// compile time probes for stuff libc didn't provide
 #include "generated/portability.h"
