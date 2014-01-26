@@ -20,7 +20,6 @@ int r_mkdir(char *dir, mode_t mode, int flags)
   for (s=dir; ; s++) {
     char save=0;
     mode_t lmode = mode;
-    //mode_t mode = 0777&~toys.old_umask;
 
     // Skip leading / of absolute paths.
     if (s!=dir && *s == '/' && (flags & 1)) {
