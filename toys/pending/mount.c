@@ -237,19 +237,19 @@ static char* get_device_name(char *label, int uuid)
   struct stat st;
   char *s = NULL, *ret = NULL;
   struct dirent *entry = NULL;
-  char *path = xmsprintf("/dev/disk/by-%s", ((uuid)? "uuid" : "label"));
+  char *path = xmprintf("/dev/disk/by-%s", ((uuid)? "uuid" : "label"));
   DIR *dp = opendir(path);
   if (!dp) perror_exit("opendir '%s'", path);
 
   while((entry = readdir(dp))) {
     if (!strcmp(label, entry->d_name)) {
-      char *fname = xmsprintf("%s/%s", path, entry->d_name);
+      char *fname = xmprintf("%s/%s", path, entry->d_name);
       if (!lstat(fname, &st) && S_ISLNK(st.st_mode)) {
         errno = 0;
         s = xreadlink(fname);
         if (s) {
           free(fname);
-          fname = xmsprintf("%s/%s", path, s);
+          fname = xmprintf("%s/%s", path, s);
           free(s);
           ret = xabspath(fname, 1);
         }
@@ -298,7 +298,7 @@ static int set_loop(char **loopdev, char *file, off_t offset)
   }
   for(n = 0; rc && n < 1048576; n++) {
     if (loopdev && *loopdev) tmploop = *loopdev;
-    else tmploop = xmsprintf("/dev/loop%d",n);
+    else tmploop = xmprintf("/dev/loop%d",n);
     device_fd = open(tmploop, O_RDWR);
     if (device_fd < 0) {
       device_fd = open(tmploop, O_RDONLY);

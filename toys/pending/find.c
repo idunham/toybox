@@ -15,7 +15,7 @@ config FIND
     usage: find [<dir>] [<options]
 
     -name <pattern>    match pattern
-    -type [fcdl]       match file type
+    -type [fbcdlsp]    match file type
     !, -a, -o          not, and , or
     (, )               group expressions  
     -mtime [-+]n       match file modification time (to within 24 hours)
