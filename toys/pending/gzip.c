@@ -15,14 +15,14 @@ config GZIP
 
     Transitional gzip, needs work. Combines gzip, zlib, and pkzip.
 
-    -q quiet (default)\n
-    -v verbose\n
-    -c compress (default)\n
-    -d decompress\n
-    -r raw (default)\n
-    -g gzip\n
-    -z zlib\n
-    -p pkzip\n
+    -q quiet (default)
+    -v verbose
+    -c compress (default)
+    -d decompress
+    -r raw (default)
+    -g gzip
+    -z zlib
+    -p pkzip
 */
 
 #define FOR_gzip
