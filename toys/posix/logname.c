@@ -5,6 +5,7 @@
  * See http://opengroup.org/onlinepubs/9699919799/utilities/logname.html
 
 USE_LOGNAME(NEWTOY(logname, ">0", TOYFLAG_BIN))
+USE_LOGNAME(OLDTOY(whoami, logname, NULL, TOYFLAG_BIN))
 
 config LOGNAME
   bool "logname"
