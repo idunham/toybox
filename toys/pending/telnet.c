@@ -20,7 +20,7 @@ config TELNET
 #include "toys.h"
 #include <arpa/telnet.h>
 #include <netinet/in.h>
-#include  <sys/poll.h>
+#include  <poll.h>
 
 GLOBALS(
   int port;

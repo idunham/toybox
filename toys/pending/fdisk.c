@@ -62,7 +62,7 @@ struct part_entry {
 
 struct part_types {
   int id;
-  char type[24];
+  char *type;
 } sys_types[] = {
   {0x00, "Empty"}, {0x01, "FAT12"}, {0x04, "FAT16 <32M"}, {0x05, "Extended"},
   {0x06, "FAT16"}, {0x07, "HPFS/NTFS"}, {0x0a, "OS/2 Boot Manager"},
