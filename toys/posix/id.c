@@ -116,6 +116,5 @@ void do_id(char *username)
 
 void id_main(void)
 {
-  if (toys.optc) while(*toys.optargs) do_id(*toys.optargs++);
-  else do_id(NULL);
+  do_id(toys.optc ? *toys.optargs : NULL);
 }
