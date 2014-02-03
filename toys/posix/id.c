@@ -128,5 +128,6 @@ void do_id(char *username)
 void id_main(void)
 {
   if (toys.which->name[0] > 'i') toys.optflags = (FLAG_u | FLAG_n);
-  do_id(toys.optc ? *toys.optargs : NULL);
+  if (toys.optc) while(*toys.optargs) do_id(*toys.optargs++);
+  else do_id(NULL);
 }
