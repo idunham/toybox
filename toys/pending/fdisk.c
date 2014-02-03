@@ -528,6 +528,7 @@ static int read_input(char *mesg, char *outp)
   int size = 0;
   while (!size) {
     xprintf("%s", mesg);
+    fflush(stdout);
     p = fgets(toybuf, 80, stdin);
   
     if (!p || !(size = strlen(p))) exit(0);
