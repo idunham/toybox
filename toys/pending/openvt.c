@@ -33,15 +33,11 @@ GLOBALS(
 int find_console_fd(void)
 {
   char *console_name[] = {"/dev/tty", "/dev/tty0", "/dev/console"};
-  int i;
-  int fd;
+  int i, fd;
   char arg;
 
   for (i = 0; i < 3; i++) {
-    fd = open(console_name[i], O_RDWR);
-    if (fd < 0 && errno == EACCES)
-      fd = open(console_name[i], O_RDONLY);
-
+    fd = open(console_name[i], O_RDONLY);
     if (fd < 0 && errno == EACCES)
       fd = open(console_name[i], O_WRONLY);
 
@@ -76,7 +72,7 @@ int xvtnum(int fd)
 
 void openvt_main(void)
 {
-  int fd = -1, vt_fd = -1, pid, ret = 0;
+  int fd, vt_fd, pid, ret = 0;
   struct vt_stat vstate;
 
   if (!(toys.optflags & FLAG_c)) {
