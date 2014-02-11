@@ -505,7 +505,7 @@ void modprobe_main(void)
   if ((toys.optc < 1) && (((flags & FLAG_r) && (flags & FLAG_l))
         ||(!((flags & FLAG_r)||(flags & FLAG_l))))) {
 	  toys.exithelp++;
-	  error_exit(" Syntex Error.");
+	  error_exit("bad syntax");
   }
   // Check for -r flag without arg if yes then do auto remove.
   if ((flags & FLAG_r) && (!toys.optc)) {
@@ -523,7 +523,7 @@ void modprobe_main(void)
     if (depmode_read_entry(toys.optargs[0])) error_exit("no module found.");
     return;
   }
-  // Read /proc/modules to get loadded modules.
+  // Read /proc/modules to get loaded modules.
   fs = xfopen("/proc/modules", "r");
   
   while (read_line(fs, &procline) > 0) {
@@ -542,7 +542,7 @@ void modprobe_main(void)
     TT.cmdopts = add_cmdopt(argv);
   }
   if (!TT.probes) {
-    fprintf(stderr, "All modules loaded successfully. \n");
+    dbg("All modules loaded\n");
     return;
   }
   dirtree_read("/etc/modprobe.conf", config_action);
