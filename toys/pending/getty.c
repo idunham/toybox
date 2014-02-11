@@ -108,9 +108,9 @@ static void parse_arguments(void)
 {
   if (isdigit(**toys.optargs)) {
     get_speed(*toys.optargs);
-    if (*++toys.optargs) TT.tty_name = xmsprintf("%s", *toys.optargs);
+    if (*++toys.optargs) TT.tty_name = xmprintf("%s", *toys.optargs);
   } else {
-    TT.tty_name = xmsprintf("%s", *toys.optargs);
+    TT.tty_name = xmprintf("%s", *toys.optargs);
     if (*++toys.optargs) get_speed(*toys.optargs);
   } 
   if (*++toys.optargs) setenv("TERM", *toys.optargs, 1);
@@ -120,7 +120,7 @@ static void parse_arguments(void)
 static void open_tty(void)
 {
   if (strcmp(TT.tty_name, "-")) {
-    if (*(TT.tty_name) != '/') TT.tty_name = xmsprintf("/dev/%s", TT.tty_name);
+    if (*(TT.tty_name) != '/') TT.tty_name = xmprintf("/dev/%s", TT.tty_name);
     // Sends SIGHUP to all foreground process if Session leader don't die,Ignore
     sighandler_t sig = signal(SIGHUP, SIG_IGN); 
     ioctl(0, TIOCNOTTY, 0); // Giveup if there is any controlling terminal
@@ -169,7 +169,7 @@ static void termios_init(void)
   TT.termios.c_cc[VEOF] = CTL('D');
   TT.termios.c_cc[VEOL] = '\n';
   TT.termios.c_cc[VKILL] = CTL('U');
-  TT.termios.c_cc[VERASE] = CERASE;
+  TT.termios.c_cc[VERASE] = 127;
   TT.termios.c_iflag |= ICRNL|IXON|IXOFF;
   // set non-zero baud rate. Zero baud rate left it unchanged.
   if (TT.speeds[0] != B0) cfsetspeed(&TT.termios, TT.speeds[0]); 
