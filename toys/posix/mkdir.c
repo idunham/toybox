@@ -20,6 +20,7 @@ config MKDIR
 
 #define FOR_mkdir
 #include "toys.h"
+int r_mkdir(char*, mode_t, int);
 
 GLOBALS(
   char *arg_mode;
@@ -29,41 +30,13 @@ GLOBALS(
 
 static int do_mkdir(char *dir)
 {
-  struct stat buf;
-  char *s;
+  mode_t mode = (toys.optflags&FLAG_m ? TT.mode : 0777&~toys.old_umask);
+  int flags = 0;
 
-  // mkdir -p one/two/three is not an error if the path already exists,
-  // but is if "three" is a file.  The others we dereference and catch
-  // not-a-directory along the way, but the last one we must explicitly
-  // test for. Might as well do it up front.
-
-  if (!stat(dir, &buf) && !S_ISDIR(buf.st_mode)) {
-    errno = EEXIST;
+  if (toys.optflags & FLAG_p) flags |= 1;
+  if (toys.optflags & FLAG_v) flags |= 2;
+  if (r_mkdir(dir,mode,flags))
     return 1;
-  }
-
-  for (s=dir; ; s++) {
-    char save=0;
-    mode_t mode = 0777&~toys.old_umask;
-
-    // Skip leading / of absolute paths.
-    if (s!=dir && *s == '/' && (toys.optflags&FLAG_p)) {
-      save = *s;
-      *s = 0;
-    } else if (*s) continue;
-
-    // Use the mode from the -m option only for the last directory.
-    if (save == '/') mode |= 0300;
-    else if (toys.optflags&FLAG_m) mode = TT.mode;
-
-    if (mkdir(dir, mode)) {
-      if (!(toys.optflags&FLAG_p) || errno != EEXIST) return 1;
-    } else if (toys.optflags&FLAG_v)
-      fprintf(stderr, "%s: created directory '%s'\n", toys.which->name, dir);
-    
-    if (!(*s = save)) break;
-  }
-
   return 0;
 }
 
