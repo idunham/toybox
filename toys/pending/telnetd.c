@@ -321,7 +321,7 @@ static void kill_session(void)
   if (!tm) return; //paranoia
   if (!prev) session_list = session_list->next;
   else prev->next = tm->next;
-  utmp_entry();
+  //utmp_entry();
   xclose(tm->pty_fd);
   xclose(tm->new_fd);
   free(tm);
