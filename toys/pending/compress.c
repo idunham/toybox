@@ -11,9 +11,11 @@
  * LSB 4.1 has gzip, gunzip, and zcat
  * TODO: zip -d DIR -x LIST -list -quiet -no overwrite -overwrite -p to stdout
 
-// Accept many different kinds of command line argument:
+// Accept many different kinds of command line argument.
+// Leave Lrg at end so flag values line up.
 
-USE_COMPRESS(NEWTOY(compress, "zglrcd9[-cd][!zglr]", TOYFLAG_USR|TOYFLAG_BIN))
+USE_COMPRESS(NEWTOY(compress, "zcd9Lrg[-cd][!zgLr]", TOYFLAG_USR|TOYFLAG_BIN))
+USE_COMPRESS(NEWTOY(zcat, "aLrg[!aLrg]", TOYFLAG_USR|TOYFLAG_BIN))
 
 //zip unzip gzip gunzip zcat
 
@@ -25,12 +27,17 @@ config COMPRESS
 
     Compress or decompress file (or stdin) using "deflate" algorithm.
 
-    -c	compress
-    -d	decompress
-    -g	gzip
-    -l	zlib
-    -r	raw (default)
-    -z	zip
+    -c	compress with -g gzip (default)  -L zlib  -r raw  -z zip
+    -d	decompress (autodetects type)
+
+config ZCAT
+  bool "zcat"
+  default n
+  depends on COMPRESS
+  help
+    usage: zcat [FILE...]
+
+    Decompress deflated file(s) to stdout
 */
 
 #define FOR_compress
@@ -40,8 +47,10 @@ GLOBALS(
   // base offset and extra bits tables (length and distance)
   char lenbits[29], distbits[30];
   unsigned short lenbase[29], distbase[30];
+  void *fixdisthuff, *fixlithuff;
 
-  unsigned (*crc)(char *data, int len);
+  void (*crcfunc)(char *data, int len);
+  unsigned crc, len;
 
   char *outbuf;
   unsigned outlen;
@@ -93,7 +102,7 @@ static inline int bitbuf_bit(struct bitbuf *bb)
 }
 
 // Fetch the next X bits from the bitbuf, little endian
-int bitbuf_get(struct bitbuf *bb, int bits)
+unsigned bitbuf_get(struct bitbuf *bb, int bits)
 {
   int result = 0, offset = 0;
 
@@ -101,7 +110,7 @@ int bitbuf_get(struct bitbuf *bb, int bits)
     int click = bb->bitpos >> 3, blow, blen;
 
     // Load more data if buffer empty
-    if (click == bb->len) bitbuf_skip(bb, 0);
+    if (click == bb->len) bitbuf_skip(bb, click = 0);
 
     // grab bits from next byte
     blow = bb->bitpos & 7;
@@ -116,10 +125,14 @@ int bitbuf_get(struct bitbuf *bb, int bits)
   return result;
 }
 
-static void outbuf_crc(char *buf, int len)
+static void outbuf_crc(char sym)
 {
-  if (TT.crc) TT.crc(buf, len);
-  xwrite(TT.outfd, buf, len);
+  TT.outbuf[TT.outlen++ & 32767] = sym;
+
+  if (!(TT.outlen & 32767)) {
+    xwrite(TT.outfd, TT.outbuf, 32768);
+    if (TT.crcfunc) TT.crcfunc(0, 32768);
+  }
 }
 
 // Huffman coding uses bits to traverse a binary tree to a leaf node,
@@ -139,7 +152,7 @@ struct huff {
 static void len2huff(struct huff *huff, char bitlen[], int len)
 {
   int offset[16];
-  int i, sum;
+  int i;
 
   // Count number of codes at each bit length
   memset(huff, 0, sizeof(struct huff));
@@ -147,7 +160,8 @@ static void len2huff(struct huff *huff, char bitlen[], int len)
 
   // Sort symbols by bit length. (They'll remain sorted by symbol within that.)
   *huff->length = *offset = 0;
-  for (i = sum = 0; i<16; i++) offset[i] = offset[i-1] + huff->length[i];
+  for (i = 1; i<16; i++) offset[i] = offset[i-1] + huff->length[i-1];
+
   for (i = 0; i<len; i++) if (bitlen[i]) huff->symbol[offset[bitlen[i]]++] = i;
 }
 
@@ -165,10 +179,7 @@ static unsigned huff_and_puff(struct bitbuf *bb, struct huff *huff)
     offset = (offset << 1) | bitbuf_bit(bb);
     start += *++length;
     if ((offset -= *length) < 0) break;
-// Note to self: what prevents overflow?
-// If we ensure ranges add up to sizeof(symbol), does that ensure all codes
-// terminate within table? Patholotical is 11111111...
-//    if (length - huff_length > 16) error_exit("bad");
+    if ((length - huff->length) & 16) error_exit("bad symbol");
   }
 
   return huff->symbol[start + offset];
@@ -177,50 +188,53 @@ static unsigned huff_and_puff(struct bitbuf *bb, struct huff *huff)
 // Decompress deflated data from bitbuf to filehandle.
 static void inflate(struct bitbuf *bb)
 {
+  TT.crc = ~0;
   // repeat until spanked
   for (;;) {
     int final, type;
 
     final = bitbuf_get(bb, 1);
     type = bitbuf_get(bb, 2);
-fprintf(stderr, "final=%d type=%d\n", final, type);
 
     if (type == 3) error_exit("bad type");
 
-    // no compression?
+    // Uncompressed block?
     if (!type) {
       int len, nlen;
 
       // Align to byte, read length
-      bitbuf_skip(bb, bb->bitpos & 7);
+      bitbuf_skip(bb, (8-bb->bitpos)&7);
       len = bitbuf_get(bb, 16);
       nlen = bitbuf_get(bb, 16);
       if (len != (0xffff & ~nlen)) error_exit("bad len");
 
-      // Dump output data
+      // Dump literal output data
       while (len) {
         int pos = bb->bitpos >> 3, bblen = bb->len - pos;
+        char *p = bb->buf+pos;
 
+        // dump bytes until done or end of current bitbuf contents
         if (bblen > len) bblen = len;
-        if (bblen) outbuf_crc(bb->buf+pos, bblen);
-        len -= bblen;
+        pos = bblen;
+        while (pos--) outbuf_crc(*(p++));
         bitbuf_skip(bb, bblen << 3);
+        len -= bblen;
       }
 
     // Compressed block
     } else {
-//      struct huff huff;
+      struct huff *disthuff, *lithuff;
 
       // Dynamic huffman codes?
       if (type == 2) {
-        struct huff hlo;
-        int i, literal, distance, hufflen;
+        struct huff *h2 = ((struct huff *)toybuf)+1;
+        int i, litlen, distlen, hufflen;
         char *hufflen_order = "\x10\x11\x12\0\x08\x07\x09\x06\x0a\x05\x0b"
                               "\x04\x0c\x03\x0d\x02\x0e\x01\x0f", *bits;
 
         // The huffman trees are stored as a series of bit lengths
-        literal = bitbuf_get(bb, 5)+257; // max 288
-        distance = bitbuf_get(bb, 5)+1;  // max 32
+        litlen = bitbuf_get(bb, 5)+257;  // max 288
+        distlen = bitbuf_get(bb, 5)+1;   // max 32
         hufflen = bitbuf_get(bb, 4)+4;   // max 19
 
         // The literal and distance codes are themselves compressed, in
@@ -229,24 +243,65 @@ fprintf(stderr, "final=%d type=%d\n", final, type);
         // in a magic order, leaving the rest 0. Then make a tree out of it:
         memset(bits = toybuf+1, 0, 19);
         for (i=0; i<hufflen; i++) bits[hufflen_order[i]] = bitbuf_get(bb, 3);
-        len2huff(&hlo, bits, 19);
+        len2huff(h2, bits, 19);
 
         // Use that tree to read in the literal and distance bit lengths
-        for (i = 0; i < literal + distance; i++) {
-          int sym = huff_and_puff(bb, &hlo);
+        for (i = 0; i < litlen + distlen;) {
+          int sym = huff_and_puff(bb, h2);
 
           // 0-15 are literals, 16 = repeat previous code 3-6 times,
-          // 17 = 3-10 zeroes, 18 = 11-138 zeroes
-          if (sym < 16) bits[i] = sym;
-          else memset(bits+i, bits[i-1] * !(sym&3),
-                      bitbuf_get(bb, (sym-14)+((sym&2)<<2)));
+          // 17 = 3-10 zeroes (3 bit), 18 = 11-138 zeroes (7 bit)
+          if (sym < 16) bits[i++] = sym;
+          else {
+            int len = sym & 2;
+
+            len = bitbuf_get(bb, sym-14+len+(len>>1)) + 3 + (len<<2);
+            memset(bits+i, bits[i-1] * !(sym&3), len);
+            i += len;
+          }
         }
+        if (i > litlen+distlen) error_exit("bad tree");
+
+        len2huff(lithuff = h2, bits, litlen);
+        len2huff(disthuff = ((struct huff *)toybuf)+2, bits+litlen, distlen);
+
       // Static huffman codes
       } else {
+        lithuff = TT.fixlithuff;
+        disthuff = TT.fixdisthuff;
+      }
+
+      // Use huffman tables to decode block of compressed symbols
+      for (;;) {
+        int sym = huff_and_puff(bb, lithuff);
+
+        // Literal?
+        if (sym < 256) outbuf_crc(sym);
+
+        // Copy range?
+        else if (sym > 256) {
+          int len, dist;
+
+          sym -= 257;
+          len = TT.lenbase[sym] + bitbuf_get(bb, TT.lenbits[sym]);
+          sym = huff_and_puff(bb, disthuff);
+          dist = TT.distbase[sym] + bitbuf_get(bb, TT.distbits[sym]);
+          sym = TT.outlen & 32767;
+
+          while (len--) outbuf_crc(TT.outbuf[(TT.outlen-dist) & 32767]);
+
+        // End of block
+        } else break;
       }
     }
 
-    if (final) return;
+    // Was that the last block?
+    if (final) break;
+  }
+
+  if (TT.outlen & 32767) {
+    xwrite(TT.outfd, TT.outbuf, TT.outlen & 32767);
+    if (TT.crcfunc) TT.crcfunc(0, TT.outlen & 32767);
   }
 }
 
@@ -277,6 +332,12 @@ static void init_deflate(void)
     if (i>3 && !(i&1)) n++;
     TT.distbits[i] = n;
   }
+
+  // Init fixed huffman tables
+  for (i=0; i<288; i++) toybuf[i] = 8 + (i>143) - ((i>255)<<1) + (i>279);
+  len2huff(TT.fixlithuff = ((struct huff *)toybuf)+3, toybuf, 288);
+  memset(toybuf, 5, 30);
+  len2huff(TT.fixdisthuff = ((struct huff *)toybuf)+4, toybuf, 30);
 }
 
 // Return true/false whether we consumed a gzip header.
@@ -298,16 +359,35 @@ static int is_gzip(struct bitbuf *bb)
   return 1;
 }
 
-static void do_gzip(int fd, char *name)
+void gzip_crc(char *data, int len)
+{
+  int i;
+  unsigned crc, *crc_table = (unsigned *)(toybuf+sizeof(toybuf)-1024);
+
+  crc = TT.crc;
+  for (i=0; i<len; i++) crc = crc_table[(crc^TT.outbuf[i])&0xff] ^ (crc>>8);
+  TT.crc = crc;
+  TT.len += len;
+}
+
+static void do_zcat(int fd, char *name)
 {
   struct bitbuf *bb = bitbuf_init(fd, sizeof(toybuf));
 
   if (!is_gzip(bb)) error_exit("not gzip");
   TT.outfd = 1;
+
+  // Use last 1k of toybuf for little endian crc table
+  crc_init((unsigned *)(toybuf+sizeof(toybuf)-1024), 1);
+  TT.crcfunc = gzip_crc;
+
   inflate(bb);
 
   // tail: crc32, len32
 
+  bitbuf_skip(bb, (8-bb->bitpos)&7);
+  if (~TT.crc != bitbuf_get(bb, 32) || TT.len != bitbuf_get(bb, 32))
+    error_exit("bad crc");
   free(bb);
 }
 
@@ -315,7 +395,16 @@ static void do_gzip(int fd, char *name)
 
 void compress_main(void)
 {
+  zcat_main();
+}
+
+//#define CLEANUP_compress
+//#define FOR_zcat
+//#include "generated/flags.h"
+
+void zcat_main(void)
+{
   init_deflate();
 
-  loopfiles(toys.optargs, do_gzip);
+  loopfiles(toys.optargs, do_zcat);
 }
