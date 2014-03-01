@@ -5,7 +5,7 @@
  *
  * No Standard
 
-USE_INIT(NEWTOY(init, "", TOYFLAG_SBIN))
+USE_INIT(NEWTOY(init, 0, TOYFLAG_SBIN))
 
 config INIT
   bool "init"
