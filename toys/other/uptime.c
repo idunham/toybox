@@ -15,6 +15,12 @@ config UPTIME
 
     Tell how long the system has been running and the system load
     averages for the past 1, 5 and 15 minutes.
+
+config UTMPX
+  bool "utmpx"
+  default n
+  help
+    Enable if you want utmpx support...
 */
 
 #include "toys.h"
@@ -51,7 +57,7 @@ void uptime_main(void)
   if (days) xprintf("%d day%s, ", days, (days!=1)?"s":"");
   if (hours) xprintf("%2d:%02d, ", hours, minutes);
   else printf("%d min, ", minutes);
-  if (CFG_UTMPX) printf(" %d user%s, ", users, (users!=1) ? "s" : "");
+  USE_UTMPX( printf(" %d user%s, ", users, (users!=1) ? "s" : "");)
   printf(" load average: %.02f, %.02f, %.02f\n", info.loads[0]/65536.0,
     info.loads[1]/65536.0, info.loads[2]/65536.0);
 }
