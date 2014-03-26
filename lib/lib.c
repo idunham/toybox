@@ -109,11 +109,57 @@ off_t lskip(int fd, off_t offset)
 
     or = readall(fd, libbuf, try);
     if (or < 0) perror_exit("lskip to %lld", (long long)offset);
-    else offset -= try;
+    else offset -= or;
     if (or < try) break;
   }
 
   return offset;
+}
+
+// flags: 1=make last dir (with mode lastmode, otherwise skips last component)
+//        2=make path (already exists is ok)
+//        4=verbose
+// returns 0 = path ok, 1 = error
+int mkpathat(int atfd, char *dir, mode_t lastmode, int flags)
+{
+  struct stat buf;
+  char *s;
+
+  // mkdir -p one/two/three is not an error if the path already exists,
+  // but is if "three" is a file. The others we dereference and catch
+  // not-a-directory along the way, but the last one we must explicitly
+  // test for. Might as well do it up front.
+
+  if (!fstatat(atfd, dir, &buf, 0) && !S_ISDIR(buf.st_mode)) {
+    errno = EEXIST;
+    return 1;
+  }
+
+  for (s = dir; ;s++) {
+    char save = 0;
+    mode_t mode = (0777&~toys.old_umask)|0300;
+
+    // find next '/', but don't try to mkdir "" at start of absolute path
+    if (*s == '/' && (flags&2) && s != dir) {
+      save = *s;
+      *s = 0;
+    } else if (*s) continue;
+
+    // Use the mode from the -m option only for the last directory.
+    if (!save) {
+      if (flags&1) mode = lastmode;
+      else break;
+    }
+
+    if (mkdirat(atfd, dir, mode)) {
+      if (!(flags&2) || errno != EEXIST) return 1;
+    } else if (flags&4)
+      fprintf(stderr, "%s: created directory '%s'\n", toys.which->name, dir);
+    
+    if (!(*s = save)) break;
+  }
+
+  return 0;
 }
 
 // Split a path into linked list of components, tracking head and tail of list.
@@ -314,16 +360,16 @@ void msleep(long miliseconds)
 int64_t peek(void *ptr, int size)
 {
   if (size & 8) {
-    int64_t *p = (int64_t *)ptr;
+    volatile int64_t *p = (int64_t *)ptr;
     return *p;
   } else if (size & 4) {
-    int *p = (int *)ptr;
+    volatile int *p = (int *)ptr;
     return *p;
   } else if (size & 2) {
-    short *p = (short *)ptr;
+    volatile short *p = (short *)ptr;
     return *p;
   } else {
-    char *p = (char *)ptr;
+    volatile char *p = (char *)ptr;
     return *p;
   }
 }
@@ -331,16 +377,16 @@ int64_t peek(void *ptr, int size)
 void poke(void *ptr, uint64_t val, int size)
 {
   if (size & 8) {
-    uint64_t *p = (uint64_t *)ptr;
+    volatile uint64_t *p = (uint64_t *)ptr;
     *p = val;
   } else if (size & 4) {
-    int *p = (int *)ptr;
+    volatile int *p = (int *)ptr;
     *p = val;
   } else if (size & 2) {
-    short *p = (short *)ptr;
+    volatile short *p = (short *)ptr;
     *p = val;
   } else {
-    char *p = (char *)ptr;
+    volatile char *p = (char *)ptr;
     *p = val;
   }
 }

@@ -20,31 +20,22 @@ config MKDIR
 
 #define FOR_mkdir
 #include "toys.h"
-int r_mkdir(char*, mode_t, int);
 
 GLOBALS(
   char *arg_mode;
-
-  mode_t mode;
 )
-
-static int do_mkdir(char *dir)
-{
-  mode_t mode = (toys.optflags&FLAG_m ? TT.mode : 0777&~toys.old_umask);
-  int flags = 0;
-
-  if (toys.optflags & FLAG_p) flags |= 1;
-  if (toys.optflags & FLAG_v) flags |= 2;
-  if (r_mkdir(dir,mode,flags))
-    return 1;
-  return 0;
-}
 
 void mkdir_main(void)
 {
   char **s;
+  mode_t mode = (0777&~toys.old_umask);
 
-  if(toys.optflags&FLAG_m) TT.mode = string_to_mode(TT.arg_mode, 0777);
 
-  for (s=toys.optargs; *s; s++) if (do_mkdir(*s)) perror_msg("'%s'", *s);
+  if (TT.arg_mode) mode = string_to_mode(TT.arg_mode, 0777);
+
+  // Note, -p and -v flags line up with mkpathat() flags
+
+  for (s=toys.optargs; *s; s++)
+    if (mkpathat(AT_FDCWD, *s, mode, toys.optflags|1))
+      perror_msg("'%s'", *s);
 }
