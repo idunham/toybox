@@ -264,7 +264,7 @@ static int read_login_name(void)
 void getty_main(void)
 {
   pid_t pid = getpid();
-  char *ptr[2] = {"/bin/login", NULL};
+  char *ptr[3] = {"/bin/login", NULL, NULL};
 
   if (!(toys.optflags & FLAG_f)) TT.issue_str = "/etc/issue";
   if (toys.optflags & FLAG_l) ptr[0] = TT.login_str;
@@ -296,7 +296,6 @@ void getty_main(void)
         perror_exit("tcsetattr"); 
     }
   }
-  if (toys.optflags & FLAG_n) execlp(*ptr, *ptr ,NULL); 
-  else execlp(*ptr, *ptr, TT.buff, NULL); 
-  perror_exit("error:%d",errno); // exec will return only if error
+  if (!toys.optflags & FLAG_n) ptr[1]=TT.buff;
+  xexec(ptr); 
 }
