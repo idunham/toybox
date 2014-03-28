@@ -211,7 +211,7 @@ void print_prompt(void)
   uname(&uts);
   hostname = xstrdup(uts.nodename);
   fputs(hostname, stdout);
-  fputs(" Login: ", stdout);
+  fputs(" login: ", stdout);
   fflush(NULL);
   free(hostname);
   hostname = NULL;
@@ -295,7 +295,7 @@ void getty_main(void)
       if (tcsetattr(STDIN_FILENO, TCSANOW, &TT.termios) < 0) 
         perror_exit("tcsetattr"); 
     }
+    ptr[1]=TT.buff;
   }
-  if (!toys.optflags & FLAG_n) ptr[1]=TT.buff;
   xexec(ptr); 
 }
