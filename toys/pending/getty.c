@@ -144,37 +144,6 @@ static void open_tty(void)
   }
 }
 
-// Intialise terminal settings
-static void termios_init(void)
-{
-  if (tcgetattr(STDIN_FILENO, &TT.termios) < 0) perror_exit("tcgetattr");
-  // Flush input and output queues, important for modems!
-  tcflush(STDIN_FILENO, TCIOFLUSH); 
-  TT.termios.c_cflag &= (0|CSTOPB|PARENB|PARODD);
-#ifdef CRTSCTS
-  if (toys.optflags & FLAG_h) TT.termios.c_cflag |= CRTSCTS;
-#endif
-  if (toys.optflags & FLAG_L) TT.termios.c_cflag |= CLOCAL;
-  TT.termios.c_cc[VTIME] = 0;
-  TT.termios.c_cc[VMIN] = 1;
-  TT.termios.c_oflag = OPOST|ONLCR;
-  TT.termios.c_cflag |= CS8|CREAD|HUPCL|CBAUDEX;
-  TT.termios.c_iflag = 0;
-  // login will disable echo for passwd.
-  TT.termios.c_lflag |= ISIG|ICANON|ECHO|ECHOE|ECHOK|ECHOKE;
-  TT.termios.c_cc[VINTR] = CTL('C');
-  TT.termios.c_cc[VQUIT] = CTL('\\');
-  TT.termios.c_cc[VEOF] = CTL('D');
-  TT.termios.c_cc[VEOL] = '\n';
-  TT.termios.c_cc[VKILL] = CTL('U');
-  TT.termios.c_cc[VERASE] = 127;
-  TT.termios.c_iflag |= ICRNL|IXON|IXOFF;
-  // set non-zero baud rate. Zero baud rate left it unchanged.
-  if (TT.speeds[0] != B0) cfsetspeed(&TT.termios, TT.speeds[0]); 
-  if (tcsetattr(STDIN_FILENO, TCSANOW, &TT.termios) < 0) 
-    perror_exit("tcsetattr");
-}
-
 // Get the baud rate from modems CONNECT mesage, Its of form <junk><BAUD><Junk>
 static void sense_baud(void)
 {
@@ -270,7 +239,31 @@ void getty_main(void)
   if (toys.optflags & FLAG_l) ptr[0] = TT.login_str;
   parse_arguments();
   open_tty();
-  termios_init();
+  if (tcgetattr(STDIN_FILENO, &TT.termios) < 0) perror_exit("tcgetattr");
+  // Flush input and output queues, important for modems!
+  tcflush(STDIN_FILENO, TCIOFLUSH); 
+  TT.termios.c_cflag &= (0|CSTOPB|PARENB|PARODD);
+#ifdef CRTSCTS
+  if (toys.optflags & FLAG_h) TT.termios.c_cflag |= CRTSCTS;
+#endif
+  if (toys.optflags & FLAG_L) TT.termios.c_cflag |= CLOCAL;
+  TT.termios.c_cc[VTIME] = 0;
+  TT.termios.c_cc[VMIN] = 1;
+  TT.termios.c_oflag = OPOST|ONLCR;
+  TT.termios.c_cflag |= CS8|CREAD|HUPCL|CBAUDEX;
+  TT.termios.c_iflag = ICRNL|IXON|IXOFF;
+  // login will disable echo for passwd.
+  TT.termios.c_lflag |= ISIG|ICANON|ECHO|ECHOE|ECHOK|ECHOKE;
+  TT.termios.c_cc[VINTR] = CTL('C');
+  TT.termios.c_cc[VQUIT] = CTL('\\');
+  TT.termios.c_cc[VEOF] = CTL('D');
+  TT.termios.c_cc[VEOL] = '\n';
+  TT.termios.c_cc[VKILL] = CTL('U');
+  TT.termios.c_cc[VERASE] = 127;
+  // set non-zero baud rate. Zero baud rate left it unchanged.
+  if (TT.speeds[0] != B0) cfsetspeed(&TT.termios, TT.speeds[0]); 
+  if (tcsetattr(STDIN_FILENO, TCSANOW, &TT.termios) < 0) 
+    perror_exit("tcsetattr");
   tcsetpgrp(STDIN_FILENO, pid);
   if (toys.optflags & FLAG_I) 
     writeall(STDOUT_FILENO,TT.init_str,strlen(TT.init_str));
