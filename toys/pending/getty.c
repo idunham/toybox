@@ -124,9 +124,7 @@ static void open_tty(void)
     ioctl(0, TIOCNOTTY, 0); // Giveup if there is any controlling terminal
     signal(SIGHUP, sig);
     if (setsid() < 0) { // Seems we are session leader
-      pid_t sid = getpid();
-
-      if(sid != getsid(0)) perror_exit("setsid");
+      if (getpid() != getsid(0)) perror_exit("setsid");
     }
     xclose(0);
     xopen(TT.tty_name, O_RDWR|O_NDELAY);
