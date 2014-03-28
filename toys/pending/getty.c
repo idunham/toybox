@@ -96,8 +96,8 @@ static void get_speed(char *sp)
   TT.sc = 0;
   while ((ptr = strsep(&sp, ","))) {
     TT.speeds[TT.sc] = encode(ptr);
-    if (TT.speeds[TT.sc] < 0) perror_exit("Bad Speed");
-    if (++TT.sc > 10) perror_exit("Too many alternate speeds, Max is 10");
+    if (TT.speeds[TT.sc] < 0) perror_exit("bad speed");
+    if (++TT.sc > 10) perror_exit("Too many speeds, max is 10");
   }
 }
 
@@ -136,7 +136,7 @@ static void open_tty(void)
     chown(TT.tty_name, 0, 0); // change ownership, Hope login will change this
     chmod(TT.tty_name, 0620);
   } else { // We already have opened TTY
-    if (setsid() < 0) perror_msg("setsid:failed");
+    if (setsid() < 0) perror_msg("setsid failed");
     if ((fcntl(0, F_GETFL) & (O_RDWR|O_RDONLY|O_WRONLY)) != O_RDWR)
       perror_exit("no read/write permission");
   }
