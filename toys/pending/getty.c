@@ -136,13 +136,13 @@ static void open_tty(void)
     dup2(0, 1);
     dup2(0, 2);
     if (ioctl(0, TIOCSCTTY, 1) < 0) perror_msg("ioctl(TIOCSCTTY)");
-    if (!isatty(0)) perror_exit("/dev/%s:Not a character device", TT.tty_name);
+    if (!isatty(0)) perror_exit("/dev/%s: Not a tty", TT.tty_name);
     chown(TT.tty_name, 0, 0); // change ownership, Hope login will change this
     chmod(TT.tty_name, 0620);
   } else { // We already have opened TTY
     if (setsid() < 0) perror_msg("setsid:failed");
     if ((fcntl(0, F_GETFL) & (O_RDWR|O_RDONLY|O_WRONLY)) != O_RDWR)
-      perror_exit("opened tty don't have read/write permission");
+      perror_exit("no read/write permission");
   }
 }
 
