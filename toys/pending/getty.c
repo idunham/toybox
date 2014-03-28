@@ -24,10 +24,8 @@ config GETTY
     -t SEC    Terminate after SEC if no login name is read
     -I INITSTR  Send INITSTR before anything else
 */
-//    -H HOST    Log HOST into the utmp file as the hostname
 #define FOR_getty
 #include "toys.h"
-#include <utmp.h>
 
 GLOBALS(
   char *issue_str;
@@ -263,41 +261,6 @@ static int read_login_name(void)
   return 1;
 }
 
-// Put hostname entry in utmp file
-static void utmp_entry(void)
-{
-  struct utmp entry;
-  struct utmp *utp_ptr;
-  pid_t pid = getpid();
-
-  utmpname(_PATH_UTMP);
-  setutent(); // Starts from start
-  while ((utp_ptr = getutent())) 
-    if (utp_ptr->ut_pid == pid && utp_ptr->ut_type >= INIT_PROCESS) break;
-  if (!utp_ptr) { 
-    entry.ut_type = LOGIN_PROCESS;
-    entry.ut_pid = getpid();
-    xstrncpy(entry.ut_line, ttyname(STDIN_FILENO) + 
-        strlen("/dev/"), UT_LINESIZE);
-    time((time_t *)&entry.ut_time);
-    xstrncpy(entry.ut_user, "LOGIN", UT_NAMESIZE);
-    if (strlen(TT.host_str) > UT_HOSTSIZE) 
-      perror_msg("Can't make utmp entry, Host length is greater than UT_HOSTSIZE(256)");
-    else xstrncpy(entry.ut_host, TT.host_str, UT_HOSTSIZE);
-    setutent();
-    pututline(&entry);
-    return;
-  }
-  xstrncpy(entry.ut_line, ttyname(STDIN_FILENO) + strlen("/dev/"), UT_LINESIZE);
-  xstrncpy(entry.ut_user, "LOGIN", UT_NAMESIZE);
-  if (strlen(TT.host_str) > UT_HOSTSIZE) 
-    perror_msg("Can't make utmp entry,Host length is greater than UT_HOSTSIZE(256)");
-  else xstrncpy(entry.ut_host, TT.host_str, UT_HOSTSIZE);
-  time((time_t *)&entry.ut_time);
-  setutent();
-  pututline(&entry);
-}
-
 void getty_main(void)
 {
   pid_t pid = getpid();
@@ -309,7 +272,6 @@ void getty_main(void)
   open_tty();
   termios_init();
   tcsetpgrp(STDIN_FILENO, pid);
-  //if (toys.optflags & FLAG_H) utmp_entry();
   if (toys.optflags & FLAG_I) 
     writeall(STDOUT_FILENO,TT.init_str,strlen(TT.init_str));
   if (toys.optflags & FLAG_m) sense_baud();
