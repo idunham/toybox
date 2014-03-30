@@ -271,7 +271,7 @@ static void do_trace()
                 hudp = (struct udphdr*) ((char*)hip + (hip->ip_hl << 2));
                 if ((hip->ip_hl << 2) + 12 <=(rcv_len - (rcv_pkt->ip_hl << 2))
                     && hip->ip_p == IPPROTO_UDP
-                    && hudp->dest == (TT.port + seq))
+                    && hudp->uh_dport == (TT.port + seq))
                   icmp_res = (ricmp->icmp_type == ICMP_TIMXCEED ? -1 :
                       ricmp->icmp_code);
               } else {
