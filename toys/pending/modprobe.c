@@ -27,7 +27,6 @@ config MODPROBE
 #define FOR_modprobe
 #include "toys.h"
 #include <sys/syscall.h>
-#include <fnmatch.h>
 
 GLOBALS(
   struct arg_list *probes;
@@ -302,13 +301,9 @@ static int depmode_read_entry(char *cmdname)
 
       tmp = strchr(name, '.');
       if (tmp) *tmp = '\0';
-      if (!cmdname) {
+      if (!cmdname || !fnmatch(cmdname, name, 0)) {
         if (tmp) *tmp = '.';
-        xprintf("%s\n", line);
-        ret = 0;
-      } else if (!fnmatch(cmdname, name, 0)) {
-        if (tmp) *tmp = '.';
-        xprintf("%s\n", line);
+        dbg("%s\n", line);
         ret = 0;
       }
     }

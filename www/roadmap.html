@@ -33,8 +33,8 @@ and progress towards implementing it.</p>
 <li><a href=#sigh>Linux "Standard" Base</a></li>
 <li><a href=#dev_env>Development Environment</a></li>
 <li><a href=#android>Android Toolbox</a></li>
-<li>Miscelaneous: <a href=#klibc>klibc</a>, <a href=#sash>sash</a>,
-<a href=#sbase>sbase</a>, <a href=#s6>s6</a>...</li>
+<li>Miscelaneous: <a href=#klibc>klibc</a>, <a href=#glibc>glibc</a>,
+<a href=#sash>sash</a>, <a href=#sbase>sbase</a>, <a href=#s6>s6</a>...</li>
 </ul>
 
 <hr />
@@ -411,6 +411,58 @@ kinit halt poweroff reboot
 ipconfig
 resume
 </span>
+</b></blockquote>
+
+<hr />
+<a name=glibc />
+<h2>glibc</h2>
+
+<p>Rather a lot of command line utilities come bundled with glibc:</p>
+
+<blockquote><b>
+catchsegv getconf getent iconv iconvconfig ldconfig ldd locale localedef
+mtrace nscd rpcent rpcinfo tzselect zdump zic
+</b></blockquote>
+
+<p>Of those, musl libc only implements ldd.</p>
+
+<p>catchsegv is a rudimentary debugger, probably out of scope for toybox.</p>
+
+<p>iconv has been <a href="#susv4">previously discussed</a>.</p>
+
+<p>iconvconfig is only relevant if iconv is user-configurable; musl uses a
+non-configurable iconv.</p>
+
+<p>getconf is a posix utility which displays several variables from 
+unistd.h; it probably belongs in the development toolchain.</p>
+
+<p>getent handles retrieving entries from passwd-style databases
+(in a rather lame way) and is trivially replacable by grep.</p>
+
+<p>locale was discussed under <a href=#susv4>posix</a>.
+localedef compiles locale definitions, which musl currently does not use.</p>
+
+<p>mtrace is a perl script to use the malloc debugging that glibc has built-in;
+this is not relevant for musl, and would necessarily vary with libc. </p>
+
+<p>nscd is a name service caching daemon, which is not yet relevant for musl.
+rpcinfo and rpcent are related to rpc, which musl does not include.</p>
+
+<p>The remaining commands involve glibc's bundled timezone database,
+which seems to be derived from the <a href=http://www.iana.org/time-zones>IANA
+timezone database</a>. Unless we want to maintain our own fork of the
+standards body's database like glibc does, these are of no interest,
+but for completeness:</p>
+
+<p>tzselect outputs a TZ variable correponding to user input. 
+The documentation does not indicate how to use it in a script, but it seems
+that Debian may have done so.
+zdump prints current time in each of several timezones, optionally
+outputting a great deal of extra information about each timezone.
+zic converts a description of a timezone to a file in tz format.</p>
+
+<p>None of glibc's bundled commands are currently of interest to toybox.</p>
+
 </b></blockquote>
 
 <hr />
