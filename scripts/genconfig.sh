@@ -34,13 +34,17 @@ EOF
     #error nope
     #endif
 EOF
+
+  # Hard to come by in uClibc.
+  probesymbol TOYBOX_ICONV -c << EOF
+    #include "iconv.h"
+EOF
 }
 
 genconfig()
 {
-  # I could query the directory here, but I want to control the order
-  # and capitalization in the menu
-  for j in toys/*/README
+  # Reverse sort puts posix first, examples last.
+  for j in $(ls toys/*/README | sort -r)
   do
     DIR="$(dirname "$j")"
 

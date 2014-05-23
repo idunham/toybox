@@ -323,9 +323,10 @@ off_t fdlength(int fd)
 
 // Read contents of file as a single nul-terminated string.
 // malloc new one if buf=len=0
-char *readfile(char *name, char *buf, off_t len)
+char *readfile(char *name, char *ibuf, off_t len)
 {
   int fd;
+  char *buf;
 
   fd = open(name, O_RDONLY);
   if (fd == -1) return 0;
@@ -335,12 +336,13 @@ char *readfile(char *name, char *buf, off_t len)
     // proc files don't report a length, so try 1 page minimum.
     if (len<4096) len = 4096;
   }
-  if (!buf) buf = xmalloc(len+1);
+  if (!ibuf) buf = xmalloc(len+1);
+  else buf = ibuf;
 
   len = readall(fd, buf, len-1);
   close(fd);
   if (len<0) {
-    free(buf);
+    if (ibuf != buf) free(buf);
     buf = 0;
   } else buf[len] = 0;
 
@@ -612,12 +614,24 @@ static struct signame signames[] = {
 // not in posix: SIGNIFY(STKFLT), SIGNIFY(WINCH), SIGNIFY(IO), SIGNIFY(PWR)
 // obsolete: SIGNIFY(PROF) SIGNIFY(POLL)
 
+// Handler that sets toys.signal, and writes to toys.signalfd if set
+void generic_signal(int sig)
+{
+  if (toys.signalfd) {
+    char c = sig;
+
+    writeall(toys.signalfd, &c, 1);
+  }
+  toys.signal = sig;
+}
+
 // Install the same handler on every signal that defaults to killing the process
 void sigatexit(void *handler)
 {
   int i;
   for (i=0; signames[i].num != SIGCHLD; i++) signal(signames[i].num, handler);
 }
+
 // Convert name to signal number.  If name == NULL print names.
 int sig_to_num(char *pidstr)
 {
@@ -780,4 +794,27 @@ void names_to_pid(char **names, int (*callback)(pid_t pid, char *name))
     if (*curname) break;
   }
   closedir(dp);
+}
+
+// display first few digits of number with power of two units, except we're
+// actually just counting decimal digits and showing mil/bil/trillions.
+int human_readable(char *buf, unsigned long long num)
+{
+  int end, len;
+
+  len = sprintf(buf, "%lld", num);
+  end = ((len-1)%3)+1;
+  len /= 3;
+
+  if (len && end == 1) {
+    buf[2] = buf[1];
+    buf[1] = '.';
+    end = 3;
+  }
+  buf[end++] = ' ';
+  if (len) buf[end++] = " KMGTPE"[len];
+  buf[end++] = 'B';
+  buf[end++] = 0;
+
+  return end;
 }

@@ -11,15 +11,15 @@ config LAST
   bool "last"
   default n
   help
-    Usage: last [-W] [-f FILE]
+    usage: last [-W] [-f FILE]
 
     Show listing of last logged in users.
 
     -W      Display the information without host-column truncation.
     -f FILE Read from file FILE instead of /var/log/wtmp.
 */
-#define FOR_last
 
+#define FOR_last
 #include "toys.h"
 #include <utmp.h>
 
@@ -29,21 +29,14 @@ config LAST
 
 GLOBALS(
   char *file;
+
   struct arg_list *list;
 )
-
-static void free_node(void *data)
-{
-  void *arg = ((struct arg_list*)data)->arg;
-  
-  if (arg) free(arg);
-  free(data);
-}
 
 static void free_list()
 {
   if (TT.list) {
-    llist_traverse(TT.list, free_node);
+    llist_traverse(TT.list, free_arg_list);
     TT.list = NULL;
   }
 }
@@ -94,7 +87,6 @@ static void seize_duration(time_t tm0, time_t tm1)
 void last_main(void)
 {
   struct utmp ut;
-  struct stat sb;
   time_t tm[3] = {0,}; //array for time avlues, previous, current
   char *file = "/var/log/wtmp";
   int fd, pwidth, curlog_type = EMPTY;
@@ -102,31 +94,27 @@ void last_main(void)
 
   if (toys.optflags & FLAG_f) file = TT.file;
 
-  TT.list = NULL;
   pwidth = (toys.optflags & FLAG_W) ? 46 : 16;
-  time(&tm[1]);
+  *tm = time(tm+1);
   fd = xopen(file, O_RDONLY);
   loc = xlseek(fd, 0, SEEK_END);
-  // in case of empty file or 'filesize < sizeof(ut)'
-  fstat(fd, &sb);
-  if (sizeof(ut) > sb.st_size) {
-    xclose(fd);
-    printf("\n%s begins %-24.24s\n", basename(file), ctime(&sb.st_ctime));
-    return;
-  }
-  loc = xlseek(fd, loc - sizeof(ut), SEEK_SET);
 
-  while (1) {
+  // Loop through file structures in reverse order.
+  for (;;) {
+    loc -= sizeof(ut);
+    if(loc < 0) break;
+    xlseek(fd, loc, SEEK_SET);
+
+    // Read next structure, determine type
     xreadall(fd, &ut, sizeof(ut));
-    tm[0] = (time_t)ut.ut_tv.tv_sec;
-    if (ut.ut_line[0] == '~') {
+    *tm = ut.ut_tv.tv_sec;
+    if (*ut.ut_line == '~') {
       if (!strcmp(ut.ut_user, "runlevel")) ut.ut_type = RUN_LVL;
       else if (!strcmp(ut.ut_user, "reboot")) ut.ut_type = BOOT_TIME;
       else if (!strcmp(ut.ut_user, "shutdown")) ut.ut_type = SHUTDOWN_TIME;
-    } 
-    else if (ut.ut_user[0] == '\0') ut.ut_type = DEAD_PROCESS;
-    else if (ut.ut_user[0] && ut.ut_line[0] && (ut.ut_type != DEAD_PROCESS)
-        && (strcmp(ut.ut_user, "LOGIN")) ) ut.ut_type = USER_PROCESS;
+    } else if (!*ut.ut_user) ut.ut_type = DEAD_PROCESS;
+    else if (*ut.ut_user && *ut.ut_line && ut.ut_type != DEAD_PROCESS
+        && strcmp(ut.ut_user, "LOGIN")) ut.ut_type = USER_PROCESS;
     /* The pair of terminal names '|' / '}' logs the
      * old/new system time when date changes it.
      */ 
@@ -134,14 +122,16 @@ void last_main(void)
       if (ut.ut_line[0] == '|') ut.ut_type = OLD_TIME;
       if (ut.ut_line[0] == '{') ut.ut_type = NEW_TIME;
     }
-    if ( (ut.ut_type == SHUTDOWN_TIME) || ((ut.ut_type == RUN_LVL) && 
-        (((ut.ut_pid & 255) == '0') || ((ut.ut_pid & 255) == '6')))) {
+
+    if ((ut.ut_type == SHUTDOWN_TIME) || ((ut.ut_type == RUN_LVL) && 
+        (((ut.ut_pid & 255) == '0') || ((ut.ut_pid & 255) == '6'))))
+    {
       tm[1] = tm[2] = (time_t)ut.ut_tv.tv_sec;
       free_list();
       curlog_type = RUN_LVL;
     } else if (ut.ut_type == BOOT_TIME) {
       seize_duration(tm[0], tm[1]);
-      strncpy(ut.ut_line, "system boot", sizeof("system boot"));
+      strcpy(ut.ut_line, "system boot");
       free_list();
       printf("%-8.8s %-12.12s %-*.*s %-16.16s %-7.7s %s\n", ut.ut_user, 
           ut.ut_line, pwidth, pwidth, ut.ut_host, 
@@ -150,6 +140,7 @@ void last_main(void)
       tm[2] = (time_t)ut.ut_tv.tv_sec;
     } else if (ut.ut_type == USER_PROCESS && *ut.ut_line) {
       struct arg_list *l = find_and_dlink(&TT.list, ut.ut_line);
+
       if (l) {
         struct utmp *u = (struct utmp *)l->arg;
         seize_duration(tm[0], u->ut_tv.tv_sec);
@@ -167,18 +158,18 @@ void last_main(void)
         seize_duration(tm[0], tm[2]);
         switch (type) {
           case EMPTY:
-            strncpy(toybuf+18, "  still", sizeof("  still"));
-            strncpy(toybuf+28, "logged in", sizeof("logged in")); 
+            strcpy(toybuf+18, "  still");
+            strcpy(toybuf+28, "logged in"); 
             break;
           case RUN_LVL:
-            strncpy(toybuf+18, "- down ", sizeof("- down "));
+            strcpy(toybuf+18, "- down ");
             break;
           case BOOT_TIME:
-            strncpy(toybuf+18, "- crash", sizeof("- crash"));
+            strcpy(toybuf+18, "- crash");
             break;
           case INIT_PROCESS:
-            strncpy(toybuf+18, "   gone", sizeof("   gone"));
-            strncpy(toybuf+28, "- no logout", sizeof("- no logout"));
+            strcpy(toybuf+18, "   gone");
+            strcpy(toybuf+28, "- no logout");
             break;
           default:
             break;
@@ -194,10 +185,12 @@ void last_main(void)
     loc -= sizeof(ut);
     if(loc < 0) break;
     xlseek(fd, loc, SEEK_SET);
-  } // End of while.
+  }
 
-  fflush(stdout);
-  xclose(fd);
-  if (CFG_TOYBOX_FREE) free_list();
-  printf("\n%s begins %-24.24s\n", basename(file), ctime(&tm[0]));
+  if (CFG_TOYBOX_FREE) {
+    xclose(fd);
+    free_list();
+  }
+
+  xprintf("\n%s begins %-24.24s\n", basename(file), ctime(tm));
 }

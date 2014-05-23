@@ -23,6 +23,7 @@
 #include <regex.h>
 #include <sched.h>
 #include <setjmp.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -119,13 +120,17 @@ extern struct toy_context {
   struct toy_list *which;  // Which entry in toy_list is this one?
   char **argv;             // Original command line arguments
   char **optargs;          // Arguments left over from get_optflags()
-  jmp_buf *rebound;        // longjmp here instead of exit when do_rebound set
   unsigned optflags;       // Command line option flags from get_optflags()
   int exitval;             // Value error_exit feeds to exit()
   int optc;                // Count of optargs
   int exithelp;            // Should error_exit print a usage message first?
   int old_umask;           // Old umask preserved by TOYFLAG_UMASK
   int toycount;            // Total number of commands in this build
+  int signal;              // generic_signal() records what signal it saw here
+  int signalfd;            // and writes signal to this fd, if set
+
+  // This is at the end so toy_init() doesn't zero it.
+  jmp_buf *rebound;        // longjmp here instead of exit when do_rebound set
 } toys;
 
 // Two big temporary buffers: one for use by commands, one for library functions

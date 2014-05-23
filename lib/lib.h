@@ -24,7 +24,9 @@ struct double_list {
   char *data;
 };
 
-void llist_traverse(void *list, void (*using)(void *data));
+void llist_free_arg(void *node);
+void llist_free_double(void *node);
+void llist_traverse(void *list, void (*using)(void *node));
 void *llist_pop(void *list);  // actually void **list
 void *dlist_pop(void *list);  // actually struct double_list **list
 void dlist_add_nomalloc(struct double_list **list, struct double_list *new);
@@ -153,6 +155,7 @@ void replace_tempfile(int fdin, int fdout, char **tempname);
 void crc_init(unsigned int *crc_table, int little_endian);
 int terminal_size(unsigned *x, unsigned *y);
 int yesno(char *prompt, int def);
+int human_readable(char *buf, unsigned long long num);
 
 // net.c
 int xsocket(int domain, int type, int protocol);
@@ -171,6 +174,7 @@ struct mtab_list *xgetmountlist(char *path);
 
 // signal
 
+void generic_signal(int signal);
 void sigatexit(void *handler);
 int sig_to_num(char *pidstr);
 char *num_to_sig(int sig);
