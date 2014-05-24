@@ -24,7 +24,7 @@ static int list_device(struct dirtree *new)
   if (!new->parent) return DIRTREE_RECURSE;
   if (new->name[0] == '.') return 0;
   name = dirtree_path(new, 0);
-  snprintf(toybuf, sizeof(toybuf), "%s/%s", name, "/uevent");
+  snprintf(toybuf, sizeof(toybuf), "%s/%s", name, "uevent");
   file = fopen(toybuf, "r");
   if (file) {
     int count = 0;
@@ -35,8 +35,13 @@ static int list_device(struct dirtree *new)
           || sscanf(toybuf, "PRODUCT=%x/%x/", &pid, &vid)) count++;
 
     if (count == 3)
-      printf("Bus %03d Device %03d: ID %04x:%04x\n", busnum, devnum, pid, vid);
+      printf("Bus %03d Device %03d: ID %04x:%04x ", busnum, devnum, pid, vid);
     fclose(file);
+    snprintf(toybuf, sizeof(toybuf), "%s/%s", name, "product");
+    file = fopen(toybuf, "r");
+    if (count == 3)
+      printf("%s", (file && fgets(toybuf,sizeof(toybuf),file)) ? toybuf:"\n");
+    if (file) fclose(file);
   }
   free(name);
 

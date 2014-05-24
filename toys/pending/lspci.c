@@ -67,7 +67,8 @@ int find_in_db(char *vendid, char *devid, FILE *fil, char *vname, char *devname)
       strncpy(vname, vtext, strlen(vtext) - 1);
   }
   while (!*devname) {
-    if (!fgets(buf, 255, fil) || *buf != '\t') return 1;
+    if (!fgets(buf, 255, fil) || (*buf != '\t' && *buf != '#')) return 1;
+    if (*buf == '#') continue;
     if ((dtext = id_check_match(devid, buf + 1)))
       strncpy(devname, dtext, strlen(dtext) - 1);
   }
