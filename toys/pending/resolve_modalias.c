@@ -16,7 +16,6 @@ config RESOLVE_MODALIAS
 
 #define FOR_resolve_modalias
 #include "toys.h"
-#include <fnmatch.h>
 
 GLOBALS(
 char *aliases;
