@@ -40,7 +40,6 @@ config GREP
 
 #define FOR_grep
 #include "toys.h"
-#include <regex.h>
 
 GLOBALS(
   long m;

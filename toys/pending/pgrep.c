@@ -26,7 +26,6 @@ config PGREP
 
 #define FOR_pgrep
 #include "toys.h"
-#include <regex.h>
 
 #define flag_get(f,v,d)   ((toys.optflags & f) ? v : d)
 #define flag_chk(f)       ((toys.optflags & f) ? 1 : 0)

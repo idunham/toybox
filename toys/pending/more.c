@@ -17,7 +17,6 @@ config MORE
 
 #define FOR_more
 #include "toys.h"
-#include <signal.h>
 
 GLOBALS(
   struct termios inf;

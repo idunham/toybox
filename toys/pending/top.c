@@ -33,8 +33,6 @@ config TOP
 
 #define FOR_top
 #include "toys.h"
-#include <signal.h>
-#include <poll.h>
 
 GLOBALS(
   long iterations;
