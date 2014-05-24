@@ -79,8 +79,8 @@ int find_in_db(char *vendid, char *devid, FILE *fil, char *vname, char *devname)
 
 int do_lspci(struct dirtree *new)
 {
-  int alen = 8, dirfd, res = 2; //no textual descriptions read
-  char *dname = dirtree_path(new, &alen);
+  int dirfd, res = 2; //no textual descriptions read
+  char *dname = dirtree_path(new, NULL);
 
   memset(toybuf, 0, 4096);
   struct {
@@ -104,8 +104,7 @@ int do_lspci(struct dirtree *new)
       p[size] = 0;
     }
 
-    close(dirfd);
-    if (errno) return 0;
+    if (errno) goto leave;
 
     {
       char *driver = "";
@@ -113,8 +112,7 @@ int do_lspci(struct dirtree *new)
                                                    : "%s Class %s: %s:%s %s\n";
 
       if (toys.optflags & FLAG_k) {
-        strcat(dname, "/driver");
-        if (readlink(dname, bufs->module, sizeof(bufs->module)) != -1)
+        if (readlinkat(dirfd,"driver",bufs->module,sizeof(bufs->module)) != -1)
           driver = basename(bufs->module);
       }
       if (CFG_LSPCI_TEXT && TT.numeric != 1) {
@@ -133,8 +131,11 @@ int do_lspci(struct dirtree *new)
                !(res) ? bufs->devname : bufs->device, driver);
       }
     }
+leave:
+    close(dirfd);
   }
 
+  free(dname);
   return 0;
 }
 
