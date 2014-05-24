@@ -4,17 +4,18 @@
  *
  * See http://opengroup.org/onlinepubs/9699919799/utilities/mkdir.html
 
-USE_MKDIR(NEWTOY(mkdir, "<1pm:", TOYFLAG_BIN))
+USE_MKDIR(NEWTOY(mkdir, "<1vpm:", TOYFLAG_BIN|TOYFLAG_UMASK))
 
 config MKDIR
   bool "mkdir"
   default y
   help
-    usage: mkdir [-p] [-m mode] [dirname...]
+    usage: mkdir [-vp] [-m mode] [dirname...]
     Create one or more directories.
 
+    -m	set permissions of directory to mode.
     -p	make parent directories as needed.
-    -m  set permissions of directory to mode.
+    -v	verbose
 */
 
 #define FOR_mkdir
@@ -22,52 +23,19 @@ config MKDIR
 
 GLOBALS(
   char *arg_mode;
-
-  mode_t mode;
 )
-
-static int do_mkdir(char *dir)
-{
-  struct stat buf;
-  char *s;
-  mode_t mode = 0777;
-
-  // mkdir -p one/two/three is not an error if the path already exists,
-  // but is if "three" is a file.  The others we dereference and catch
-  // not-a-directory along the way, but the last one we must explicitly
-  // test for. Might as well do it up front.
-
-  if (!stat(dir, &buf) && !S_ISDIR(buf.st_mode)) {
-    errno = EEXIST;
-    return 1;
-  }
-
-  for (s=dir; ; s++) {
-    char save=0;
-
-    // Skip leading / of absolute paths.
-    if (s!=dir && *s == '/' && (toys.optflags&FLAG_p)) {
-      save = *s;
-      *s = 0;
-    } else if (*s) continue;
-
-    // Use the mode from the -m option only for the last directory.
-    if ((toys.optflags&FLAG_m) && save != '/') mode = TT.mode;
-
-    if (mkdir(dir, mode)<0 && ((toys.optflags&~FLAG_p) || errno != EEXIST))
-      return 1;
-
-    if (!(*s = save)) break;
-  }
-
-  return 0;
-}
 
 void mkdir_main(void)
 {
   char **s;
+  mode_t mode = (0777&~toys.old_umask);
 
-  if(toys.optflags&FLAG_m) TT.mode = string_to_mode(TT.arg_mode, 0777);
 
-  for (s=toys.optargs; *s; s++) if (do_mkdir(*s)) perror_msg("'%s'", *s);
+  if (TT.arg_mode) mode = string_to_mode(TT.arg_mode, 0777);
+
+  // Note, -p and -v flags line up with mkpathat() flags
+
+  for (s=toys.optargs; *s; s++)
+    if (mkpathat(AT_FDCWD, *s, mode, toys.optflags|1))
+      perror_msg("'%s'", *s);
 }

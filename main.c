@@ -20,7 +20,7 @@ struct toy_list toy_list[] = {
 
 struct toy_context toys;
 union global_union this;
-char toybuf[4096];
+char toybuf[4096], libbuf[4096];
 
 struct toy_list *toy_find(char *name)
 {
@@ -67,6 +67,8 @@ static void toy_singleinit(struct toy_list *which, char *argv[])
   toys.argv = argv;
 
   if (CFG_TOYBOX_HELP_DASHDASH && argv[1] && !strcmp(argv[1], "--help")) {
+    if (toys.which == toy_list && toys.argv[2])
+      if (!(toys.which = toy_find(toys.argv[2]))) return;
     show_help();
     xexit();
   }
@@ -90,7 +92,8 @@ void toy_init(struct toy_list *which, char *argv[])
     uid_t uid = getuid(), euid = geteuid();
 
     if (!(which->flags & TOYFLAG_STAYROOT)) {
-      if (uid != euid) xsetuid(euid=uid);
+      if (uid != euid)
+        if (!setuid(euid=uid)) perror_exit("setuid"); // drop root
     } else if (CFG_TOYBOX_DEBUG && uid && which != toy_list)
       error_msg("Not installed suid root");
 
@@ -114,7 +117,7 @@ void toy_exec(char *argv[])
 
   if (!(which = toy_find(argv[0]))) return;
   toy_init(which, argv);
-  toys.which->toy_main();
+  if (toys.which) toys.which->toy_main();
   if (fflush(NULL) || ferror(stdout)) perror_exit("write");
   xexit();
 }
@@ -129,16 +132,9 @@ void toybox_main(void)
 
   toys.which = toy_list;
   if (toys.argv[1]) {
-    if (CFG_TOYBOX_HELP_DASHDASH && !strcmp(toys.argv[1], "--help")) {
-      if (toys.argv[2]) toys.which = toy_find(toys.argv[2]);
-      if (toys.which) {
-        show_help();
-        return;
-      }
-    } else {
-      toy_exec(toys.argv+1);
-      if (toys.argv[1][0] == '-') goto list;
-    }
+    toys.optc = 0;
+    toy_exec(toys.argv+1);
+    if (toys.argv[1][0] == '-') goto list;
     
     error_exit("Unknown command %s",toys.argv[1]);
   }
@@ -167,7 +163,9 @@ int main(int argc, char *argv[])
 {
   if (CFG_TOYBOX_I18N) setlocale(LC_ALL, "");
 
-  if (!CFG_TOYBOX_SINGLE) {
+  toys.toycount = ARRAY_LEN(toy_list);
+
+  if (CFG_TOYBOX) {
     // Trim path off of command name
     *argv = basename(*argv);
 

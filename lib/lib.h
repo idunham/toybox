@@ -3,17 +3,6 @@
  * Copyright 2006 Rob Landley <rob@landley.net>
  */
 
-// Unfortunately, sizeof() doesn't work in a preprocessor test.  TODO.
-
-//#if sizeof(double) <= sizeof(long)
-//typedef double FLOAT;
-//#else
-typedef float FLOAT;
-//#endif
-
-// libc generally has this, but the headers are screwed up
-ssize_t getline(char **lineptr, size_t *n, FILE *stream);
-
 // llist.c
 
 // All these list types can be handled by the same code because first element
@@ -36,7 +25,8 @@ struct double_list {
 };
 
 void llist_traverse(void *list, void (*using)(void *data));
-void *llist_pop(void *list);  // actually void **list, but the compiler's dumb
+void *llist_pop(void *list);  // actually void **list
+void *dlist_pop(void *list);  // actually struct double_list **list
 void dlist_add_nomalloc(struct double_list **list, struct double_list *new);
 struct double_list *dlist_add(struct double_list **list, char *data);
 
@@ -93,7 +83,7 @@ void *xzalloc(size_t size);
 void *xrealloc(void *ptr, size_t size);
 char *xstrndup(char *s, size_t n);
 char *xstrdup(char *s);
-char *xmsprintf(char *format, ...);
+char *xmprintf(char *format, ...);
 void xprintf(char *format, ...);
 void xputs(char *s);
 void xputc(char c);
@@ -112,17 +102,22 @@ size_t xread(int fd, void *buf, size_t len);
 void xreadall(int fd, void *buf, size_t len);
 void xwrite(int fd, void *buf, size_t len);
 off_t xlseek(int fd, off_t offset, int whence);
-char *xreadfile(char *name);
+char *xreadfile(char *name, char *buf, off_t len);
 int xioctl(int fd, int request, void *data);
 char *xgetcwd(void);
 void xstat(char *path, struct stat *st);
 char *xabspath(char *path, int exact);
 char *xrealpath(char *path);
 void xchdir(char *path);
-void xmkpath(char *path, int mode);
-void xsetuid(uid_t uid);
+void xchroot(char *path);
+struct passwd *xgetpwuid(uid_t uid);
+struct group *xgetgrgid(gid_t gid);
+struct passwd *xgetpwnam(char *name);
+void xsetuser(struct passwd *pwd);
 char *xreadlink(char *name);
 long xparsetime(char *arg, long units, long *fraction);
+void xpidfile(char *name);
+void xregcomp(regex_t *preg, char *rexec, int cflags);
 
 // lib.c
 void verror_msg(char *msg, int err, va_list va);
@@ -133,17 +128,15 @@ void perror_exit(char *msg, ...) noreturn;
 ssize_t readall(int fd, void *buf, size_t len);
 ssize_t writeall(int fd, void *buf, size_t len);
 off_t lskip(int fd, off_t offset);
+int mkpathat(int atfd, char *dir, mode_t lastmode, int flags);
 struct string_list **splitpath(char *path, struct string_list **list);
-char *readfile(char *name);
+char *readfile(char *name, char *buf, off_t len);
 void msleep(long miliseconds);
 int64_t peek(void *ptr, int size);
 void poke(void *ptr, uint64_t val, int size);
 struct string_list *find_in_path(char *path, char *filename);
-void utoa_to_buf(unsigned n, char *buf, unsigned buflen);
-void itoa_to_buf(int n, char *buf, unsigned buflen);
-char *utoa(unsigned n);
-char *itoa(int n);
 long atolx(char *c);
+long atolx_range(char *numstr, long low, long high);
 int numlen(long l);
 int stridx(char *haystack, char needle);
 off_t fdlength(int fd);
@@ -158,10 +151,9 @@ int copy_tempfile(int fdin, char *name, char **tempname);
 void delete_tempfile(int fdin, int fdout, char **tempname);
 void replace_tempfile(int fdin, int fdout, char **tempname);
 void crc_init(unsigned int *crc_table, int little_endian);
-void terminal_size(unsigned *x, unsigned *y);
+int terminal_size(unsigned *x, unsigned *y);
 int yesno(char *prompt, int def);
-void for_each_pid_with_name_in(char **names, int (*callback)(pid_t pid, char *name));
-unsigned long xstrtoul(const char *nptr, char **endptr, int base);
+int human_readable(char *buf, unsigned long long num);
 
 // net.c
 int xsocket(int domain, int type, int protocol);
@@ -176,9 +168,7 @@ struct mtab_list {
   char type[0];
 };
 
-struct mtab_list *xgetmountlist(void);
-
-void bunzipStream(int src_fd, int dst_fd);
+struct mtab_list *xgetmountlist(char *path);
 
 // signal
 
@@ -188,17 +178,7 @@ char *num_to_sig(int sig);
 
 mode_t string_to_mode(char *mode_str, mode_t base);
 void mode_to_string(mode_t mode, char *buf);
+void names_to_pid(char **names, int (*callback)(pid_t pid, char *name));
 
-// password helper functions
-int read_password(char * buff, int buflen, char* mesg);
-int update_password(char *filename, char* username, char* encrypted);
-
-// du helper functions
-char* make_human_readable(unsigned long long size, unsigned long unit);
-
-// cut helper functions
-unsigned long get_int_value(const char *numstr, unsigned lowrange, unsigned highrange);
-
-// grep helper functions
-char  *astrcat (char *, char *);
-char *xastrcat (char *, char *);
+// Functions in need of further review/cleanup
+#include "lib/pending.h"

@@ -7,12 +7,12 @@
 USE_DF(NEWTOY(df, "Pkt*a", TOYFLAG_USR|TOYFLAG_SBIN))
 
 config DF
-  bool "df (disk free)"
+  bool "df"
   default y
   help
     usage: df [-t type] [FILESYSTEM ...]
 
-    The "disk free" command, df shows total/used/available disk space for
+    The "disk free" command shows total/used/available disk space for
     each filesystem listed on the command line, or all currently mounted
     filesystems.
 
@@ -26,12 +26,10 @@ config DF_PEDANTIC
     usage: df [-Pk]
 
     -P	The SUSv3 "Pedantic" option
-
-    Provides a slightly less useful output format dictated by
-    the Single Unix Specification version 3, and sets the
-    units to 512 bytes instead of the default 1024 bytes.
-
     -k	Sets units back to 1024 bytes (the default without -P)
+
+    Pedantic provides a slightly less useful output format dictated by Posix,
+    and sets the units to 512 bytes instead of the default 1024 bytes.
 */
 
 #define FOR_df
@@ -108,7 +106,7 @@ void df_main(void)
       TT.units);
   } else puts("Filesystem\t1K-blocks\tUsed Available Use% Mounted on");
 
-  mtlist = xgetmountlist();
+  mtlist = xgetmountlist(0);
 
   // If we have a list of filesystems on the command line, loop through them.
   if (*toys.optargs) {
@@ -124,7 +122,7 @@ void df_main(void)
       }
 
       // Find and display this filesystem.  Use _last_ hit in case of
-      // -- bind mounts.
+      // overmounts (which is first hit in the reversed list).
       mt2 = NULL;
       for (mt = mtlist; mt; mt = mt->next) {
         if (st.st_dev == mt->stat.st_dev) {

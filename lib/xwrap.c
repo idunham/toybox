@@ -12,7 +12,7 @@
 // Strcpy with size checking: exit if there's not enough space for the string.
 void xstrncpy(char *dest, char *src, size_t size)
 {
-  if (strlen(src)+1 > size) error_exit("xstrcpy");
+  if (strlen(src)+1 > size) error_exit("'%s' > %ld bytes", src, (long)size);
   strcpy(dest, src);
 }
 
@@ -66,7 +66,7 @@ char *xstrdup(char *s)
 }
 
 // Die unless we can allocate enough space to sprintf() into.
-char *xmsprintf(char *format, ...)
+char *xmprintf(char *format, ...)
 {
   va_list va, va2;
   int len;
@@ -127,7 +127,7 @@ void xexec_optargs(int skip)
 // with a path isn't a builtin, so /bin/sh won't match the builtin sh.
 void xexec(char **argv)
 {
-  if (!CFG_TOYBOX_SINGLE) toy_exec(argv);
+  if (CFG_TOYBOX) toy_exec(argv);
   execvp(argv[0], argv);
 
   perror_exit("exec %s", argv[0]);
@@ -363,40 +363,40 @@ void xchdir(char *path)
   if (chdir(path)) error_exit("chdir '%s'", path);
 }
 
-// Ensure entire path exists.
-// If mode != -1 set permissions on newly created dirs.
-// Requires that path string be writable (for temporary null terminators).
-void xmkpath(char *path, int mode)
+void xchroot(char *path)
 {
-  char *p, old;
-  mode_t mask;
-  int rc;
-  struct stat st;
+  if (chroot(path)) error_exit("chroot '%s'", path);
+  xchdir("/");
+}
 
-  for (p = path; ; p++) {
-    if (!*p || *p == '/') {
-      old = *p;
-      *p = rc = 0;
-      if (stat(path, &st) || !S_ISDIR(st.st_mode)) {
-        if (mode != -1) {
-          mask=umask(0);
-          rc = mkdir(path, mode);
-          umask(mask);
-        } else rc = mkdir(path, 0777);
-      }
-      *p = old;
-      if(rc) perror_exit("mkpath '%s'", path);
-    }
-    if (!*p) break;
-  }
+struct passwd *xgetpwuid(uid_t uid)
+{
+  struct passwd *pwd = getpwuid(uid);
+  if (!pwd) error_exit("bad uid %ld", (long)uid);
+  return pwd;
+}
+
+struct group *xgetgrgid(gid_t gid)
+{
+  struct group *group = getgrgid(gid);
+  if (!group) error_exit("bad gid %ld", (long)gid);
+  return group;
+}
+
+struct passwd *xgetpwnam(char *name)
+{
+  struct passwd *up = getpwnam(name);
+  if (!up) error_exit("bad user '%s'", name);
+  return up;
 }
 
 // setuid() can fail (for example, too many processes belonging to that user),
 // which opens a security hole if the process continues as the original user.
 
-void xsetuid(uid_t uid)
+void xsetuser(struct passwd *pwd)
 {
-  if (setuid(uid)) perror_exit("xsetuid");
+  if (initgroups(pwd->pw_name, pwd->pw_gid) || setgid(pwd->pw_uid)
+      || setuid(pwd->pw_uid)) perror_exit("xsetuser '%s'", pwd->pw_name);
 }
 
 // This can return null (meaning file not found).  It just won't return null
@@ -423,10 +423,10 @@ char *xreadlink(char *name)
   }
 }
 
-char *xreadfile(char *name)
+char *xreadfile(char *name, char *buf, off_t len)
 {
-  char *buf = readfile(name);
-  if (!buf) perror_exit("xreadfile %s", name);
+  if (!(buf = readfile(name, buf, len))) perror_exit("Bad '%s'", name);
+
   return buf;
 }
 
@@ -452,7 +452,7 @@ void xpidfile(char *name)
   sprintf(pidfile, "/var/run/%s.pid", name);
   // Try three times to open the sucker.
   for (i=0; i<3; i++) {
-    fd = open(pidfile, O_CREAT|O_EXCL, 0644);
+    fd = open(pidfile, O_CREAT|O_EXCL|O_WRONLY, 0644);
     if (fd != -1) break;
 
     // If it already existed, read it.  Loop for race condition.
@@ -463,7 +463,7 @@ void xpidfile(char *name)
     spid[xread(fd, spid, sizeof(spid)-1)] = 0;
     close(fd);
     pid = atoi(spid);
-    if (pid < 1 || kill(pid, 0) == ESRCH) unlink(pidfile);
+    if (pid < 1 || (kill(pid, 0) && errno == ESRCH)) unlink(pidfile);
 
     // An else with more sanity checking might be nice here.
   }
@@ -513,4 +513,15 @@ long xparsetime(char *arg, long units, long *fraction)
   } else if (fraction) *fraction = 0;
 
   return l;
+}
+
+// Compile a regular expression into a regex_t
+void xregcomp(regex_t *preg, char *regex, int cflags)
+{
+  int rc = regcomp(preg, regex, cflags);
+
+  if (rc) {
+    regerror(rc, preg, libbuf, sizeof(libbuf));
+    error_exit("xregcomp: %s", libbuf);
+  }
 }

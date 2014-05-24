@@ -7,27 +7,44 @@ mkdir -p generated
 
 source configure
 
+# Probe for a single config symbol with a "compiles or not" test.
+# Symbol name is first argument, flags second, feed C file to stdin
+probesymbol()
+{
+  ${CROSS_COMPILE}${CC} $CFLAGS -xc -o /dev/null $2 - 2>/dev/null
+  [ $? -eq 0 ] && DEFAULT=y || DEFAULT=n
+  rm a.out 2>/dev/null
+  echo -e "config $1\n\tbool" || exit 1
+  echo -e "\tdefault $DEFAULT\n" || exit 1
+}
+
 probeconfig()
 {
   # Probe for container support on target
-
-  echo -e "# container support\nconfig TOYBOX_CONTAINER\n\tbool" || return 1
-  ${CROSS_COMPILE}${CC} $CFLAGS -xc -o /dev/null - 2>/dev/null << EOF
+  probesymbol TOYBOX_CONTAINER << EOF
     #include <linux/sched.h>
     int x=CLONE_NEWNS|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWNET;
 
     int main(int argc, char *argv[]) { return unshare(x); }
 EOF
-  [ $? -eq 0 ] && DEFAULT=y || DEFAULT=n
-  rm a.out 2>/dev/null
-  echo -e "\tdefault $DEFAULT\n" || return 1
+
+  probesymbol TOYBOX_FIFREEZE -c << EOF
+    #include <linux/fs.h>
+    #ifndef FIFREEZE
+    #error nope
+    #endif
+EOF
+
+  # Hard to come by in uClibc.
+  probesymbol TOYBOX_ICONV -c << EOF
+    #include "iconv.h"
+EOF
 }
 
 genconfig()
 {
-  # I could query the directory here, but I want to control the order
-  # and capitalization in the menu
-  for j in toys/*/README
+  # Reverse sort puts posix first, examples last.
+  for j in $(ls toys/*/README | sort -r)
   do
     DIR="$(dirname "$j")"
 
@@ -49,33 +66,5 @@ genconfig()
   done
 }
 
-headerprobes()
-{
-  ${CROSS_COMPILE}${CC} $CFLAGS -xc -o /dev/null - 2>/dev/null << EOF
-    #include <fcntl.h>
-    #ifndef O_NOFOLLOW
-    #error posix 2008 was a while ago now
-    #endif
-EOF
-  if [ $? -ne 0 ]
-  then
-    rm -f a.out
-    ${CROSS_COMPILE}${CC} $CFLAGS -xc - 2>/dev/null << EOF
-      #include <stdio.h>
-      #include <sys/types.h>
-      #include <asm/fcntl.h>
-
-      int main(int argc, char *argv[])
-      {
-        printf("0x%x\n", O_NOFOLLOW);
-      }
-EOF
-    X=$(./a.out) 2>/dev/null
-    rm -f a.out
-    echo "#define O_NOFOLLOW ${X:-0}"
-  fi
-}
-
 probeconfig > generated/Config.probed || rm generated/Config.probed
 genconfig > generated/Config.in || rm generated/Config.in
-headerprobes > generated/portability.h || rm generated/portability.h

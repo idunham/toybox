@@ -6,49 +6,9 @@
 #include "toys.h"
 
 // Design goals:
-//   Don't use getopt()
-//   Don't permute original arguments.
-//   handle --long gracefully "(noshort)a(along)b(blong1)(blong2)"
-//   After each argument:
-//       Note that pointer and long are always the same size, even on 64 bit.
-//     : plus a string argument, keep most recent if more than one
-//     * plus a string argument, appended to a list
-//     # plus a signed long argument
-//       <LOW     - die if less than LOW
-//       >HIGH    - die if greater than HIGH
-//       =DEFAULT - value if not specified
-//     - plus a signed long argument defaulting to negative
-//     . plus a double precision floating point argument (with CFG_TOYBOX_FLOAT)
-//       Chop this out with USE_TOYBOX_FLOAT() around option string
-//       Same <LOW>HIGH=DEFAULT as #
-//     @ plus an occurrence counter (which is a long)
-//     (longopt)
-//     | this is required.  If more than one marked, only one required. TODO
-//     ^ Stop parsing after encountering this argument
-//    " " (space char) the "plus an  argument" must be separate
-//        I.E. "-j 3" not "-j3". So "kill -stop" != "kill -s top"
-//
-//   at the beginning:
-//     ^ stop at first nonoption argument
-//     <0 die if less than # leftover arguments (default 0)
-//     >9 die if > # leftover arguments (default MAX_INT)
-//     ? Allow unknown arguments (pass them through to command).
-//     & first argument has imaginary dash (ala tar/ps)
-//       If given twice, all arguments have imaginary dash
-//
-//   At the end: [groups] of previously seen options
-//     - Only one in group (switch off)    [-abc] means -ab=-b, -ba=-a, -abc=-c
-//     | Synonyms (switch on all)          [|abc] means -ab=-abc, -c=-abc
-//     ! More than one in group is error   [!abc] means -ab calls error_exit()
-//     + First in group switches rest on   [+abc] means -a=-abc, -b=-b, -c=-c
-//       primarily useful if you can switch things back off again.
-//     
-
-// Notes from getopt man page
-//   - and -- cannot be arguments.
-//     -- force end of arguments
-//     - is a synonym for stdin in file arguments
-//   -abc means -a -b -c
+//   Don't use getopt() out of libc.
+//   Don't permute original arguments (screwing up ps/top output).
+//   Integrated --long options "(noshort)a(along)b(blong1)(blong2)"
 
 /* This uses a getopt-like option string, but not getopt() itself. We call
  * it the get_opt string.
@@ -69,17 +29,69 @@
  *   argv = ["command", "-b", "fruit", "-d", "walrus"] results in:
  *
  *     Changes to struct toys:
- *       toys.optflags = 5  (-b=4 | -d=1)
- *       toys.optargs[0]="walrus" (leftover argument)
- *       toys.optargs[1]=NULL (end of list)
- *       toys.optc=1 (there was 1 leftover argument)
+ *       toys.optflags = 5 (I.E. 0101 so -b = 4 | -d = 1)
+ *       toys.optargs[0] = "walrus" (leftover argument)
+ *       toys.optargs[1] = NULL (end of list)
+ *       toys.optc = 1 (there was 1 leftover argument)
  *
  *     Changes to union this:
  *       this[0]=NULL (because -c didn't get an argument this time)
  *       this[1]="fruit" (argument to -b)
  */
 
+// Enabling TOYBOX_DEBUG in .config adds syntax checks to option string parsing
+// which aren't needed in the final code (your option string is hardwired and
+// should be correct when you ship), but are useful for development.
+
+// What you can put in a get_opt string:
+//   Any otherwise unused character (all letters, unprefixed numbers) specify
+//   an option that sets a flag. The bit value is the same as the binary digit
+//   if you string the option characters together in order.
+//   So in "abcdefgh" a = 128, h = 1
+//
+//   Suffixes specify that this option takes an argument (stored in GLOBALS):
+//       Note that pointer and long are always the same size, even on 64 bit.
+//     : plus a string argument, keep most recent if more than one
+//     * plus a string argument, appended to a list
+//     # plus a signed long argument
+//       <LOW     - die if less than LOW
+//       >HIGH    - die if greater than HIGH
+//       =DEFAULT - value if not specified
+//     - plus a signed long argument defaulting to negative (say + for positive)
+//     . plus a double precision floating point argument (with CFG_TOYBOX_FLOAT)
+//       Chop this option out with USE_TOYBOX_FLOAT() in option string
+//       Same <LOW>HIGH=DEFAULT as #
+//     @ plus an occurrence counter (which is a long)
+//     (longopt)
+//     | this is required. If more than one marked, only one required.
+//     ; long option's argument is optional (can only be supplied with --opt=)
+//     ^ Stop parsing after encountering this argument
+//    " " (space char) the "plus an argument" must be separate
+//        I.E. "-j 3" not "-j3". So "kill -stop" != "kill -s top"
+//
+//   At the beginning of the get_opt string (before any options):
+//     ^ stop at first nonoption argument
+//     <0 die if less than # leftover arguments (default 0)
+//     >9 die if > # leftover arguments (default MAX_INT)
+//     ? Allow unknown arguments (pass them through to command).
+//     & first argument has imaginary dash (ala tar/ps)
+//       If given twice, all arguments have imaginary dash
+//
+//   At the end: [groups] of previously seen options
+//     - Only one in group (switch off)    [-abc] means -ab=-b, -ba=-a, -abc=-c
+//     + Synonyms (switch on all)          [+abc] means -ab=-abc, -c=-abc
+//     ! More than one in group is error   [!abc] means -ab calls error_exit()
+//       primarily useful if you can switch things back off again.
+//     
+
+// Notes from getopt man page
+//   - and -- cannot be arguments.
+//     -- force end of arguments
+//     - is a synonym for stdin in file arguments
+//   -abcd means -a -b -c -d (but if -b takes an argument, then it's -a -b cd)
+
 // Linked list of all known options (option string parsed into this).
+// Hangs off getoptflagstate, freed at end of option parsing.
 struct opts {
   struct opts *next;
   long *arg;         // Pointer into union "this" to store arguments at.
@@ -93,6 +105,10 @@ struct opts {
   } val[3];          // low, high, default - range of allowed values
 };
 
+// linked list of long options. (Hangs off getoptflagstate, free at end of
+// option parsing, details about flag to set and global slot to fill out
+// stored in related short option struct, but if opt->c = -1 the long option
+// is "bare" (has no corresponding short option).
 struct longopts {
   struct longopts *next;
   struct opts *opt;
@@ -123,7 +139,14 @@ static int gotflag(struct getoptflagstate *gof, struct opts *opt)
   }
 
   // Set flags
-  toys.optflags &= ~opt->dex[0];
+  if (toys.optflags & opt->dex[0]) {
+    struct opts *clr;
+    unsigned i = 1;
+
+    for (clr=gof->opts, i=1; clr; clr = clr->next, i<<=1)
+      if (clr->arg && (i & toys.optflags)) *clr->arg = 0;
+    toys.optflags &= ~opt->dex[0];
+  }
   toys.optflags |= opt->dex[1];
   gof->excludes |= opt->dex[2];
   if (opt->flags&2) gof->stopearly=2;
@@ -140,7 +163,10 @@ static int gotflag(struct getoptflagstate *gof, struct opts *opt)
   }
 
   // Does this option take an argument?
-  gof->arg++;
+  if (!gof->arg) {
+    if (opt->flags & 8) return 0;
+    gof->arg = "";
+  } else gof->arg++;
   type = opt->type;
 
   if (type == '@') ++*(opt->arg);
@@ -151,9 +177,17 @@ static int gotflag(struct getoptflagstate *gof, struct opts *opt)
     // to make "tar xCjfv blah1 blah2 thingy" work like
     // "tar -x -C blah1 -j -f blah2 -v thingy"
 
-    if (gof->nodash_now || !arg[0]) arg = toys.argv[++gof->argc];
-    // TODO: The following line doesn't display --longopt correctly
-    if (!arg) error_exit("Missing argument to -%c", opt->c);
+    if (gof->nodash_now || (!arg[0] && !(opt->flags & 8)))
+      arg = toys.argv[++gof->argc];
+    if (!arg) {
+      char *s = "Missing argument to ";
+      struct longopts *lo;
+
+      if (opt->c != -1) error_exit("%s-%c", s, opt->c);
+
+      for (lo = gof->longopts; lo->opt != opt; lo = lo->next);
+      error_exit("%s--%.*s", s, lo->len, lo->str);
+    }
 
     if (type == ':') *(opt->arg) = (long)arg;
     else if (type == '*') {
@@ -230,27 +264,27 @@ void parse_optflaglist(struct getoptflagstate *gof)
     }
     // Each option must start with "(" or an option character.  (Bare
     // longopts only come at the start of the string.)
-    if (*options == '(') {
+    if (*options == '(' && new->c != -1) {
       char *end;
-      struct longopts *lo = xmalloc(sizeof(struct longopts));
+      struct longopts *lo;
 
       // Find the end of the longopt
       for (end = ++options; *end && *end != ')'; end++);
       if (CFG_TOYBOX_DEBUG && !*end) error_exit("(longopt) didn't end");
 
       // init a new struct longopts
+      lo = xmalloc(sizeof(struct longopts));
       lo->next = gof->longopts;
       lo->opt = new;
       lo->str = options;
       lo->len = end-options;
       gof->longopts = lo;
-      options = end;
+      options = ++end;
 
       // Mark this struct opt as used, even when no short opt.
-      if (!new->c) {
-        new->c = -1;
-        new = 0;
-      }
+      if (!new->c) new->c = -1;
+
+      continue;
 
     // If this is the start of a new option that wasn't a longopt,
 
@@ -258,7 +292,7 @@ void parse_optflaglist(struct getoptflagstate *gof)
       if (CFG_TOYBOX_DEBUG && new->type)
         error_exit("multiple types %c:%c%c", new->c, new->type, *options);
       new->type = *options;
-    } else if (-1 != (idx = stridx("|^ ", *options))) new->flags |= 1<<idx;
+    } else if (-1 != (idx = stridx("|^ ;", *options))) new->flags |= 1<<idx;
     // bounds checking
     else if (-1 != (idx = stridx("<>=", *options))) {
       if (new->type == '#') {
@@ -269,14 +303,13 @@ void parse_optflaglist(struct getoptflagstate *gof)
         if (temp != options) new->val[idx].f = f;
       } else if (CFG_TOYBOX_DEBUG) error_exit("<>= only after .#");
       options = --temp;
-    }
 
     // At this point, we've hit the end of the previous option.  The
     // current character is the start of a new option.  If we've already
     // assigned an option to this struct, loop to allocate a new one.
     // (It'll get back here afterwards and fall through to next else.)
-    else if (new->c) {
-      new = NULL;
+    } else if (new->c) {
+      new = 0;
       continue;
 
     // Claim this option, loop to see what's after it.
@@ -305,12 +338,14 @@ void parse_optflaglist(struct getoptflagstate *gof)
 
     if (CFG_TOYBOX_DEBUG && *options != '[') error_exit("trailing %s", options);
 
-    idx = stridx("-|!+", *++options);
+    idx = stridx("-+!", *++options);
     if (CFG_TOYBOX_DEBUG && idx == -1) error_exit("[ needs +-!");
+    if (CFG_TOYBOX_DEBUG && (options[1] == ']' || !options[1]))
+      error_exit("empty []");
 
     // Don't advance past ] but do process it once in loop.
-    while (*(options++) != ']') {
-      struct opts *opt, *opt2 = 0;
+    while (*options++ != ']') {
+      struct opts *opt;
       int i;
 
       if (CFG_TOYBOX_DEBUG && !*options) error_exit("[ without ]");
@@ -318,17 +353,12 @@ void parse_optflaglist(struct getoptflagstate *gof)
       for (i=0, opt = gof->opts; ; i++, opt = opt->next) {
         if (*options == ']') {
           if (!opt) break;
-          if (idx == 3) {
-            opt2->dex[1] |= bits;
-            break;
-          }
           if (bits&(1<<i)) opt->dex[idx] |= bits&~(1<<i);
         } else {
           if (CFG_TOYBOX_DEBUG && !opt)
             error_exit("[] unknown target %c", *options);
           if (opt->c == *options) {
             bits |= 1<<i;
-            if (!opt2) opt2=opt;
             break;
           }
         }
@@ -382,16 +412,15 @@ void get_optflags(void)
           gof.stopearly += 2;
           continue;
         }
-        // Handle --longopt
 
+        // do we match a known --longopt?
         for (lo = gof.longopts; lo; lo = lo->next) {
           if (!strncmp(gof.arg, lo->str, lo->len)) {
-            if (gof.arg[lo->len]) {
-              if (gof.arg[lo->len]=='=' && lo->opt->type) gof.arg += lo->len;
-              else continue;
-            }
+            if (!gof.arg[lo->len]) gof.arg = 0;
+            else if (gof.arg[lo->len] == '=' && lo->opt->type)
+              gof.arg += lo->len;
+            else continue;
             // It's a match.
-            gof.arg = "";
             catch = lo->opt;
             break;
           }
@@ -399,7 +428,7 @@ void get_optflags(void)
 
         // Should we handle this --longopt as a non-option argument?
         if (!lo && gof.noerror) {
-          gof.arg-=2;
+          gof.arg -= 2;
           goto notflag;
         }
 

@@ -5,13 +5,22 @@
 export LANG=c
 source ./configure
 
-if [ -z ".config" ]
+[ -z "$KCONFIG_CONFIG" ] && KCONFIG_CONFIG=".config"
+
+if [ -z "$KCONFIG_CONFIG" ]
 then
-  echo "No .config (see "make help" for configuration options)."
+  echo "No $KCONFIG_CONFIG (see "make help" for configuration options)."
   exit 1
 fi
 
-echo "Make generated/config.h from .config."
+# Respond to V= by echoing command lines as well as running them
+do_loudly()
+{
+  [ ! -z "$V" ] && echo "$@"
+  "$@"
+}
+
+echo "Make generated/config.h from $KCONFIG_CONFIG."
 
 # This long and roundabout sed invocation is to make old versions of sed happy.
 # New ones have '\n' so can replace one line with two without all the branches
@@ -35,7 +44,7 @@ sed -n \
   -e 's/.*/#define CFG_& 1/p' \
   -e 'g' \
   -e 's/.*/#define USE_&(...) __VA_ARGS__/p' \
-  .config > generated/config.h || exit 1
+  $KCONFIG_CONFIG > generated/config.h || exit 1
 
 
 echo "Extract configuration information from toys/*.c files..."
@@ -48,81 +57,74 @@ echo "Generate headers from toys/*/*.c..."
 # first element of the array). The rest must be sorted in alphabetical order
 # for fast binary search.
 
-echo "generated/newtoys.h"
+echo -n "generated/newtoys.h "
 
-echo "NEWTOY(toybox, NULL, TOYFLAG_STAYROOT)" > generated/newtoys.h
+echo "USE_TOYBOX(NEWTOY(toybox, NULL, TOYFLAG_STAYROOT))" > generated/newtoys.h
 sed -n -e 's/^USE_[A-Z0-9_]*(/&/p' toys/*/*.c \
 	| sed 's/\(.*TOY(\)\([^,]*\),\(.*\)/\2 \1\2,\3/' | sort -k 1,1 \
 	| sed 's/[^ ]* //'  >> generated/newtoys.h
+sed -n -e 's/.*(NEWTOY(\([^,]*\), *\(\("[^"]*"[^,]*\)*\),.*/#define OPTSTR_\1\t\2/p' \
+  generated/newtoys.h > generated/oldtoys.h
 
-# Extract list of command letters from processed header file
+do_loudly $HOSTCC scripts/mkflags.c -o generated/mkflags || exit 1
 
-function getflags()
-{
-  FLX="$1"
-  shift
-  sed -n -e "s/.*TOY($FLX"',[ \t]*"\([^"]*\)"[ \t]*,.*)/\1/' \
-         -e 't keep;d;:keep' -e 's/^[<>=][0-9]//' -e 's/[?&^]//' \
-         -e 't keep' -e 's/[><=][0-9][0-9]*//g' -e 's/+.//g' \
-         -e 's/\[[^]]*\]//g' -e 's/[-?^:&#|@* ]//g' "$@" -e 'p'
-}
+echo -n "generated/flags.h "
+
+# Process config.h and newtoys.h to generate FLAG_x macros. Note we must
+# always #define the relevant macro, even when it's disabled, because we
+# allow multiple NEWTOY() in the same C file. (When disabled the FLAG is 0,
+# so flags&0 becomes a constant 0 allowing dead code elimination.)
+
+# Parse files through C preprocessor twice, once to get flags for current
+# .config and once to get flags for allyesconfig
+for I in A B
+do
+  (
+  # define macros and select header files with option string data
+
+  echo "#define NEWTOY(aa,bb,cc) aa $I bb"
+  echo '#define OLDTOY(...)'
+  if [ "$I" == A ]
+  then
+    cat generated/config.h
+  else
+    sed '/USE_.*([^)]*)$/s/$/ __VA_ARGS__/' generated/config.h
+  fi
+  cat generated/newtoys.h
+
+  # Run result through preprocessor, glue together " " gaps leftover from USE
+  # macros, delete comment lines, print any line with a quoted optstring,
+  # turn any non-quoted opstring (NULL or 0) into " " (because fscanf can't
+  # handle "" with nothing in it, and mkflags uses that).
+
+  ) | ${CROSS_COMPILE}${CC} -E - | \
+    sed -n -e 's/" *"//g;/^#/d;t clear;:clear;s/"/"/p;t;s/\( [AB] \).*/\1 " "/p'
+
+# Sort resulting line pairs and glue them together into triplets of
+#   command "flags" "allflags"
+# to feed into mkflags C program that outputs actual flag macros
+# If no pair (because command's disabled in config), use " " for flags
+# so allflags can define the appropriate zero macros.
+
+done | sort | sed -n 's/ A / /;t pair;h;s/\([^ ]*\).*/\1 " "/;x;b single;:pair;h;n;:single;s/[^ ]* B //;H;g;s/\n/ /;p' |\
+generated/mkflags > generated/flags.h || exit 1
 
 # Extract global structure definitions and flag definitions from toys/*/*.c
 
 function getglobals()
 {
-  # Run newtoys.h through the compiler's preprocessor to resolve USE macros
-  # against current config.
-  NEWTOYS="$(cat generated/config.h generated/newtoys.h | $CC -E - | sed 's/" *"//g')"
-
-  # Grab allyesconfig for comparison
-  ALLTOYS="$((sed '/USE_.*([^)]*)$/s/$/ __VA_ARGS__/' generated/config.h && cat generated/newtoys.h) | $CC -E - | sed 's/" *"//g')"
-
   for i in toys/*/*.c
   do
     NAME="$(echo $i | sed 's@.*/\(.*\)\.c@\1@')"
+    DATA="$(sed -n -e '/^GLOBALS(/,/^)/b got;b;:got' \
+            -e 's/^GLOBALS(/struct '"$NAME"'_data {/' \
+            -e 's/^)/};/' -e 'p' $i)"
 
-    echo -e "// $i\n"
-    sed -n -e '/^GLOBALS(/,/^)/b got;b;:got' \
-        -e 's/^GLOBALS(/struct '"$NAME"'_data {/' \
-        -e 's/^)/};/' -e 'p' $i
-
-    LONGFLAGS="$(echo "$NEWTOYS" | getflags "$NAME" -e 's/\(\(([^)]*)\)*\).*/\1/' -e 's/(//g' -e 's/)/ /g')"
-    FLAGS="$(echo "$NEWTOYS" | getflags "$NAME" -e 's/([^)]*)//g')"
-    ZFLAGS="$(echo "$ALLTOYS" | getflags "$NAME" -e 's/([^)]*)//g' -e 's/[-'"$FLAGS"']//g')"
-    LONGFLAGLEN="$(echo "$LONGFLAGS" | wc -w)"
-
-    echo "#ifdef FOR_${NAME}"
-    X=0
-    # Provide values for --longopts with no corresponding short flags
-    for i in $LONGFLAGS
-    do
-      X=$(($X+1))
-      echo -e "#define FLAG_$i\t(1<<$(($LONGFLAGLEN+${#FLAGS}-$X)))"
-    done
-
-    # Provide values for active flags
-    X=0
-    while [ $X -lt ${#FLAGS} ]
-    do
-      echo -ne "#define FLAG_${FLAGS:$X:1}\t"
-      X=$(($X+1))
-      echo "(1<<$((${#FLAGS}-$X)))"
-    done
-
-    # Provide zeroes for inactive flags
-    X=0
-    while [ $X -lt ${#ZFLAGS} ]
-    do
-      echo "#define FLAG_${ZFLAGS:$X:1} 0"
-      X=$(($X+1))
-    done
-    echo "#define TT this.${NAME}"
-    echo "#endif"
+    [ ! -z "$DATA" ] && echo -e "// $i\n\n$DATA\n"
   done
 }
 
-echo "generated/globals.h"
+echo -n "generated/globals.h "
 
 GLOBSTRUCT="$(getglobals)"
 (
@@ -134,15 +136,11 @@ GLOBSTRUCT="$(getglobals)"
 ) > generated/globals.h
 
 echo "generated/help.h"
-# Only recreate generated/help.h if python2 is installed. Does not work with 3.
-PYTHON="$(which python2)"
-if [ ! -z "$PYTHON" ] && [ ! -z "$(grep 'CONFIG_TOYBOX_HELP=y' .config)" ]
-then
-  echo "Extract help text from Config.in."
-  "$PYTHON" scripts/config2help.py Config.in > generated/help.h || exit 1
-fi
+do_loudly $HOSTCC scripts/config2help.c -I . lib/xwrap.c lib/llist.c lib/lib.c \
+  -o generated/config2help && \
+generated/config2help Config.in $KCONFIG_CONFIG > generated/help.h || exit 1
 
-# Extract a list of toys/*/*.c files to compile from the data in ".config":
+# Extract a list of toys/*/*.c files to compile from the data in $KCONFIG_CONFIG
 
 # 1) Get a list of C files in toys/* and glue them together into a regex we can
 # feed to grep that will match any one of them (whole word, not substring).
@@ -155,7 +153,7 @@ TOYFILES="^$(ls toys/*/*.c | sed -n 's@^.*/\(.*\)\.c$@\1@;s/-/_/g;H;${g;s/\n//;s
 # 5) Remove any config symbol not recognized as a filename from step 1.
 # 6) Add "toys/*/" prefix and ".c" suffix.
 
-TOYFILES=$(sed -nre 's/^CONFIG_(.*)=y/\1/p' < .config \
+TOYFILES=$(sed -nre 's/^CONFIG_(.*)=y/\1/p' < "$KCONFIG_CONFIG" \
   | sort -u | tr A-Z a-z | grep -E "$TOYFILES" | sed 's@\(.*\)@toys/\*/\1.c@')
 
 echo "Library probe..."

@@ -11,7 +11,7 @@ config NETCAT
   bool "netcat"
   default y
   help
-    usage: netcat [-wpq #] [-s addr] [-u] {IPADDR PORTNUM|-f FILENAME}
+    usage: netcat [-u] [-wpq #] [-s addr] {IPADDR PORTNUM|-f FILENAME}
 
     -f	use FILENAME (ala /dev/ttyS0) instead of network
     -p	local port number
@@ -42,7 +42,6 @@ config NETCAT_LISTEN
 
 #define FOR_netcat
 #include "toys.h"
-#include "toynet.h"
 
 GLOBALS(
   char *filename;        // -f read from filename instead of network

@@ -67,7 +67,7 @@ ssize_t readall(int fd, void *buf, size_t len)
   size_t count = 0;
 
   while (count<len) {
-    int i = read(fd, buf+count, len-count);
+    int i = read(fd, (char *)buf+count, len-count);
     if (!i) break;
     if (i<0) return i;
     count += i;
@@ -81,7 +81,7 @@ ssize_t writeall(int fd, void *buf, size_t len)
 {
   size_t count = 0;
   while (count<len) {
-    int i = write(fd, buf+count, len-count);
+    int i = write(fd, count+(char *)buf, len-count);
     if (i<1) return i;
     count += i;
   }
@@ -89,25 +89,77 @@ ssize_t writeall(int fd, void *buf, size_t len)
   return count;
 }
 
+// skip this many bytes of input. Return 0 for success, >0 means this much
+// left after input skipped.
 off_t lskip(int fd, off_t offset)
 {
-  off_t and = lseek(fd, offset, SEEK_CUR);
+  off_t cur = lseek(fd, 0, SEEK_CUR);
 
-  if (and != -1 && offset >= lseek(fd, offset, SEEK_END)
-    && offset+and == lseek(fd, offset+and, SEEK_SET)) return 0;
-  else {
-    char buf[4096];
-    while (offset>0) {
-      int try = offset>sizeof(buf) ? sizeof(buf) : offset, or;
+  if (cur != -1) {
+    off_t end = lseek(fd, 0, SEEK_END) - cur;
 
-      or = readall(fd, buf, try);
-      if (or < 0) perror_msg("lskip to %lld", (long long)offset);
-      else offset -= try;
-      if (or < try) break;
+    if (end > 0 && end < offset) return offset - end;
+    end = offset+cur;
+    if (end == lseek(fd, end, SEEK_SET)) return 0;
+    perror_exit("lseek");
+  }
+
+  while (offset>0) {
+    int try = offset>sizeof(libbuf) ? sizeof(libbuf) : offset, or;
+
+    or = readall(fd, libbuf, try);
+    if (or < 0) perror_exit("lskip to %lld", (long long)offset);
+    else offset -= or;
+    if (or < try) break;
+  }
+
+  return offset;
+}
+
+// flags: 1=make last dir (with mode lastmode, otherwise skips last component)
+//        2=make path (already exists is ok)
+//        4=verbose
+// returns 0 = path ok, 1 = error
+int mkpathat(int atfd, char *dir, mode_t lastmode, int flags)
+{
+  struct stat buf;
+  char *s;
+
+  // mkdir -p one/two/three is not an error if the path already exists,
+  // but is if "three" is a file. The others we dereference and catch
+  // not-a-directory along the way, but the last one we must explicitly
+  // test for. Might as well do it up front.
+
+  if (!fstatat(atfd, dir, &buf, 0) && !S_ISDIR(buf.st_mode)) {
+    errno = EEXIST;
+    return 1;
+  }
+
+  for (s = dir; ;s++) {
+    char save = 0;
+    mode_t mode = (0777&~toys.old_umask)|0300;
+
+    // find next '/', but don't try to mkdir "" at start of absolute path
+    if (*s == '/' && (flags&2) && s != dir) {
+      save = *s;
+      *s = 0;
+    } else if (*s) continue;
+
+    // Use the mode from the -m option only for the last directory.
+    if (!save) {
+      if (flags&1) mode = lastmode;
+      else break;
     }
 
-    return offset;
+    if (mkdirat(atfd, dir, mode)) {
+      if (!(flags&2) || errno != EEXIST) return 1;
+    } else if (flags&4)
+      fprintf(stderr, "%s: created directory '%s'\n", toys.which->name, dir);
+    
+    if (!(*s = save)) break;
   }
+
+  return 0;
 }
 
 // Split a path into linked list of components, tracking head and tail of list.
@@ -177,62 +229,6 @@ struct string_list *find_in_path(char *path, char *filename)
   return rlist;
 }
 
-// Convert unsigned int to ascii, writing into supplied buffer.  A truncated
-// result contains the first few digits of the result ala strncpy, and is
-// always null terminated (unless buflen is 0).
-void utoa_to_buf(unsigned n, char *buf, unsigned buflen)
-{
-  int i, out = 0;
-
-  if (buflen) {
-    for (i=1000000000; i; i/=10) {
-      int res = n/i;
-
-      if ((res || out || i == 1) && --buflen>0) {
-        out++;
-        n -= res*i;
-        *buf++ = '0' + res;
-      }
-    }
-    *buf = 0;
-  }
-}
-
-// Convert signed integer to ascii, using utoa_to_buf()
-void itoa_to_buf(int n, char *buf, unsigned buflen)
-{
-  if (buflen && n<0) {
-    n = -n;
-    *buf++ = '-';
-    buflen--;
-  }
-  utoa_to_buf((unsigned)n, buf, buflen);
-}
-
-// This static buffer is used by both utoa() and itoa(), calling either one a
-// second time will overwrite the previous results.
-//
-// The longest 32 bit integer is -2 billion plus a null terminator: 12 bytes.
-// Note that int is always 32 bits on any remotely unix-like system, see
-// http://www.unix.org/whitepapers/64bit.html for details.
-
-static char itoa_buf[12];
-
-// Convert unsigned integer to ascii, returning a static buffer.
-char *utoa(unsigned n)
-{
-  utoa_to_buf(n, itoa_buf, sizeof(itoa_buf));
-
-  return itoa_buf;
-}
-
-char *itoa(int n)
-{
-  itoa_to_buf(n, itoa_buf, sizeof(itoa_buf));
-
-  return itoa_buf;
-}
-
 // atol() with the kilo/mega/giga/tera/peta/exa extensions.
 // (zetta and yotta don't fit in 64 bits.)
 long atolx(char *numstr)
@@ -249,6 +245,16 @@ long atolx(char *numstr)
       if (*c) error_exit("not integer: %s", numstr);
     }
   }
+
+  return val;
+}
+
+long atolx_range(char *numstr, long low, long high)
+{
+  long val = atolx(numstr);
+
+  if (val < low) error_exit("%ld < %ld", val, low);
+  if (val > high) error_exit("%ld > %ld", val, high);
 
   return val;
 }
@@ -315,18 +321,30 @@ off_t fdlength(int fd)
   return base;
 }
 
-// Read contents of file as a single freshly allocated nul-terminated string.
-char *readfile(char *name)
+// Read contents of file as a single nul-terminated string.
+// malloc new one if buf=len=0
+char *readfile(char *name, char *ibuf, off_t len)
 {
-  off_t len;
   int fd;
   char *buf;
 
   fd = open(name, O_RDONLY);
   if (fd == -1) return 0;
-  len = fdlength(fd);
-  buf = xmalloc(len+1);
-  buf[readall(fd, buf, len)] = 0;
+
+  if (len<1) {
+    len = fdlength(fd);
+    // proc files don't report a length, so try 1 page minimum.
+    if (len<4096) len = 4096;
+  }
+  if (!ibuf) buf = xmalloc(len+1);
+  else buf = ibuf;
+
+  len = readall(fd, buf, len-1);
+  close(fd);
+  if (len<0) {
+    if (ibuf != buf) free(buf);
+    buf = 0;
+  } else buf[len] = 0;
 
   return buf;
 }
@@ -344,16 +362,16 @@ void msleep(long miliseconds)
 int64_t peek(void *ptr, int size)
 {
   if (size & 8) {
-    int64_t *p = (int64_t *)ptr;
+    volatile int64_t *p = (int64_t *)ptr;
     return *p;
   } else if (size & 4) {
-    int *p = (int *)ptr;
+    volatile int *p = (int *)ptr;
     return *p;
   } else if (size & 2) {
-    short *p = (short *)ptr;
+    volatile short *p = (short *)ptr;
     return *p;
   } else {
-    char *p = (char *)ptr;
+    volatile char *p = (char *)ptr;
     return *p;
   }
 }
@@ -361,16 +379,16 @@ int64_t peek(void *ptr, int size)
 void poke(void *ptr, uint64_t val, int size)
 {
   if (size & 8) {
-    uint64_t *p = (uint64_t *)ptr;
+    volatile uint64_t *p = (uint64_t *)ptr;
     *p = val;
   } else if (size & 4) {
-    int *p = (int *)ptr;
+    volatile int *p = (int *)ptr;
     *p = val;
   } else if (size & 2) {
-    short *p = (short *)ptr;
+    volatile short *p = (short *)ptr;
     *p = val;
   } else {
-    char *p = (char *)ptr;
+    volatile char *p = (char *)ptr;
     *p = val;
   }
 }
@@ -522,32 +540,35 @@ void crc_init(unsigned int *crc_table, int little_endian)
 }
 
 // Quick and dirty query size of terminal, doesn't do ANSI probe fallback.
-// set *x=0 and *y=0 before calling to detect failure to set either, or
-// x=80 y=25 to provide defaults
+// set x=80 y=25 before calling to provide defaults. Returns 0 if couldn't
+// determine size.
 
-void terminal_size(unsigned *x, unsigned *y)
+int terminal_size(unsigned *xx, unsigned *yy)
 {
   struct winsize ws;
-  int i;
+  unsigned i, x = 0, y = 0;
+  char *s;
 
-  //memset(&ws, 0, sizeof(ws));
+  // stdin, stdout, stderr
   for (i=0; i<3; i++) {
-    if (ioctl(i, TIOCGWINSZ, &ws)) continue;
-    if (x) *x = ws.ws_col;
-    if (y) *y = ws.ws_row;
-  }
-  if (x) {
-    char *s = getenv("COLUMNS");
+    memset(&ws, 0, sizeof(ws));
+    if (!ioctl(i, TIOCGWINSZ, &ws)) {
+      if (ws.ws_col) x = ws.ws_col;
+      if (ws.ws_row) y = ws.ws_row;
 
-    i = s ? atoi(s) : 0;
-    if (i>0) *x = i;
+      break;
+    }
   }
-  if (y) {
-    char *s = getenv("ROWS");
+  s = getenv("COLUMNS");
+  if (s) sscanf(s, "%u", &x);
+  s = getenv("ROWS");
+  if (s) sscanf(s, "%u", &y);
 
-    i = s ? atoi(s) : 0;
-    if (i>0) *y = i;
-  }
+  // Never return 0 for either value, leave it at default instead.
+  if (xx && x) *xx = x;
+  if (yy && y) *yy = y;
+
+  return x || y;
 }
 
 int yesno(char *prompt, int def)
@@ -736,4 +757,52 @@ void mode_to_string(mode_t mode, char *buf)
   else if (S_ISSOCK(mode)) c = 's';
   else c = '-';
   *buf = c;
+}
+
+// Execute a callback for each PID that matches a process name from a list.
+void names_to_pid(char **names, int (*callback)(pid_t pid, char *name))
+{
+  DIR *dp;
+  struct dirent *entry;
+
+  if (!(dp = opendir("/proc"))) perror_exit("opendir");
+
+  while ((entry = readdir(dp))) {
+    unsigned u;
+    char *cmd, **curname;
+
+    if (!(u = atoi(entry->d_name))) continue;
+    sprintf(libbuf, "/proc/%u/cmdline", u);
+    if (!(cmd = readfile(libbuf, libbuf, sizeof(libbuf)))) continue;
+
+    for (curname = names; *curname; curname++)
+      if (**curname == '/' ? !strcmp(cmd, *curname)
+          : !strcmp(basename(cmd), basename(*curname)))
+        if (callback(u, *curname)) break;
+    if (*curname) break;
+  }
+  closedir(dp);
+}
+
+// display first few digits of number with power of two units, except we're
+// actually just counting decimal digits and showing mil/bil/trillions.
+int human_readable(char *buf, unsigned long long num)
+{
+  int end, len;
+
+  len = sprintf(buf, "%lld", num);
+  end = ((len-1)%3)+1;
+  len /= 3;
+
+  if (len && end == 1) {
+    buf[2] = buf[1];
+    buf[1] = '.';
+    end = 3;
+  }
+  buf[end++] = ' ';
+  if (len) buf[end++] = " KMGTPE"[len];
+  buf[end++] = 'B';
+  buf[end++] = 0;
+
+  return end;
 }

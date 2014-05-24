@@ -5,7 +5,7 @@
  *
  * See http://opengroup.org/onlinepubs/9699919799/utilities/ls.html
 
-USE_LS(NEWTOY(ls, USE_LS_COLOR("(color)")"goACFHLRSacdfiklmnpqrstux1[-1Cglmnox][-cu][-ftS][-HL]", TOYFLAG_BIN))
+USE_LS(NEWTOY(ls, USE_LS_COLOR("(color):;")"goACFHLRSacdfiklmnpqrstux1[-1Cglmnox][-cu][-ftS][-HL]", TOYFLAG_BIN))
 
 config LS
   bool "ls"
@@ -37,10 +37,11 @@ config LS_COLOR
   default y
   depends on LS
   help
-    usage: ls --color
+    usage: ls --color[=auto]
 
     --color  device=yellow  symlink=turquoise/red  dir=blue  socket=purple
              files: exe=green  suid=red  suidfile=redback  stickydir=greenback
+             =auto means detect if output is a tty.
 */
 
 #define FOR_ls
@@ -51,13 +52,13 @@ config LS_COLOR
 // ls -lR starts .: then ./subdir:
 
 GLOBALS(
+  char *color;
+
   struct dirtree *files;
 
   unsigned screen_width;
   int nl_title;
-
-  // group and user can make overlapping use of the utoa() buf, so move it
-  char uid_buf[12];
+  char uid_buf[12], gid_buf[12];
 )
 
 void dlist_to_dirtree(struct dirtree *parent)
@@ -89,14 +90,17 @@ static char endtype(struct stat *st)
 static char *getusername(uid_t uid)
 {
   struct passwd *pw = getpwuid(uid);
-  utoa_to_buf(uid, TT.uid_buf, 12);
+
+  sprintf(TT.uid_buf, "%u", (unsigned)uid);
   return pw ? pw->pw_name : TT.uid_buf;
 }
 
 static char *getgroupname(gid_t gid)
 {
   struct group *gr = getgrgid(gid);
-  return gr ? gr->gr_name : utoa(gid);
+
+  sprintf(TT.gid_buf, "%u", (unsigned)gid);
+  return gr ? gr->gr_name : TT.gid_buf;
 }
 
 // Figure out size of printable entry fields for display indent/wrap
@@ -114,8 +118,10 @@ static void entrylen(struct dirtree *dt, unsigned *len)
   if (flags & (FLAG_l|FLAG_o|FLAG_n|FLAG_g)) {
     unsigned fn = flags & FLAG_n;
     len[2] = numlen(st->st_nlink);
-    len[3] = strlen(fn ? utoa(st->st_uid) : getusername(st->st_uid));
-    len[4] = strlen(fn ? utoa(st->st_gid) : getgroupname(st->st_gid));
+    len[3] = fn ? snprintf(0, 0, "%u", (unsigned)st->st_uid)
+                : strlen(getusername(st->st_uid));
+    len[4] = fn ? snprintf(0, 0, "%u", (unsigned)st->st_gid)
+                : strlen(getgroupname(st->st_gid));
     if (S_ISBLK(st->st_mode) || S_ISCHR(st->st_mode)) {
       // cheating slightly here: assuming minor is always 3 digits to avoid
       // tracking another column
@@ -353,22 +359,18 @@ static void listfiles(int dirfd, struct dirtree *indir)
 
       mode_to_string(mode, perm);
 
-      tm = localtime(&(st->st_mtime));
-      strftime(thyme, sizeof(thyme), "%F %H:%M", tm);
-
       if (flags&FLAG_o) grp = grpad = toybuf+256;
       else {
-        grp = (flags&FLAG_n) ? utoa(st->st_gid) : getgroupname(st->st_gid);
+        sprintf(thyme, "%u", (unsigned)st->st_gid);
+        grp = (flags&FLAG_n) ? thyme : getgroupname(st->st_gid);
         grpad = toybuf+256-(totals[4]-len[4]);
       }
 
       if (flags&FLAG_g) usr = upad = toybuf+256;
       else {
         upad = toybuf+255-(totals[3]-len[3]);
-        if (flags&FLAG_n) {
-          usr = TT.uid_buf;
-          utoa_to_buf(st->st_uid, TT.uid_buf, 12);
-        } else usr = getusername(st->st_uid);
+        if (flags&FLAG_n) sprintf(usr = TT.uid_buf, "%u", (unsigned)st->st_uid);
+        else usr = getusername(st->st_uid);
       }
 
       // Coerce the st types into something we know we can print.
@@ -378,10 +380,13 @@ static void listfiles(int dirfd, struct dirtree *indir)
       if (S_ISCHR(st->st_mode) || S_ISBLK(st->st_mode))
         printf("% *d,% 4d", totals[5]-4, major(st->st_rdev),minor(st->st_rdev));
       else printf("% *"PRId64, totals[5]+1, (int64_t)st->st_size);
+
+      tm = localtime(&(st->st_mtime));
+      strftime(thyme, sizeof(thyme), "%F %H:%M", tm);
       xprintf(" %s ", thyme);
     }
 
-    if ((flags & FLAG_color) && TT.screen_width) {
+    if (flags & FLAG_color) {
       color = color_from_mode(st->st_mode);
       if (color) printf("\033[%d;%dm", color>>8, color&255);
     }
@@ -394,7 +399,7 @@ static void listfiles(int dirfd, struct dirtree *indir)
 
     if ((flags & (FLAG_l|FLAG_o|FLAG_n|FLAG_g)) && S_ISLNK(mode)) {
       printf(" -> ");
-      if ((flags & FLAG_color) && TT.screen_width) {
+      if (flags & FLAG_color) {
         struct stat st2;
 
         if (fstatat(dirfd, sort[next]->symlink, &st2, 0)) color = 256+31;
@@ -442,7 +447,10 @@ void ls_main(void)
   if (TT.screen_width<2) TT.screen_width = 2;
 
   // Do we have an implied -1
-  if (!isatty(1) || (toys.optflags&(FLAG_l|FLAG_o|FLAG_n|FLAG_g)))
+  if (!isatty(1)) {
+    toys.optflags |= FLAG_1;
+    if (TT.color) toys.optflags ^= FLAG_color;
+  } else if (toys.optflags&(FLAG_l|FLAG_o|FLAG_n|FLAG_g))
     toys.optflags |= FLAG_1;
   else if (!(toys.optflags&(FLAG_1|FLAG_x|FLAG_m))) toys.optflags |= FLAG_C;
   // The optflags parsing infrastructure should really do this for us,

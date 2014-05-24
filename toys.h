@@ -3,25 +3,26 @@
  * Copyright 2006 Rob Landley <rob@landley.net>
  */
 
-#include "generated/config.h"
+// Stuff that needs to go before the standard headers
 
+#include "generated/config.h"
 #include "lib/portability.h"
 
+// General posix-2008 headers
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <grp.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <libgen.h>
 #include <math.h>
-#include <pty.h>
 #include <pwd.h>
+#include <regex.h>
 #include <sched.h>
 #include <setjmp.h>
-#include <sched.h>
-#include <shadow.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -29,15 +30,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/mount.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
-#include <sys/statfs.h>
 #include <sys/statvfs.h>
-#include <sys/sysinfo.h>
-#include <sys/swap.h>
 #include <sys/time.h>
 #include <sys/times.h>
 #include <sys/types.h>
@@ -49,11 +45,28 @@
 #include <utime.h>
 #include <utmpx.h>
 
-// Internationalization support
+// Posix networking
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
+// Internationalization support (also in POSIX and LSB)
 
 #include <locale.h>
 #include <wchar.h>
 #include <wctype.h>
+
+// LSB 4.1 headers
+#include <pty.h>
+#include <sys/ioctl.h>
+#include <sys/statfs.h>
+#include <sys/sysinfo.h>
 
 #include "lib/lib.h"
 #include "toys/e2fs.h"
@@ -63,6 +76,8 @@
 #define NEWTOY(name, opts, flags) void name##_main(void);
 #define OLDTOY(name, oldname, opts, flags)
 #include "generated/newtoys.h"
+#include "generated/oldtoys.h"
+#include "generated/flags.h"
 #include "generated/globals.h"
 
 // These live in main.c
@@ -102,19 +117,24 @@ extern struct toy_list {
 
 extern struct toy_context {
   struct toy_list *which;  // Which entry in toy_list is this one?
-  int exitval;             // Value error_exit feeds to exit()
   char **argv;             // Original command line arguments
-  unsigned optflags;       // Command line option flags from get_optflags()
   char **optargs;          // Arguments left over from get_optflags()
+  unsigned optflags;       // Command line option flags from get_optflags()
+  int exitval;             // Value error_exit feeds to exit()
   int optc;                // Count of optargs
   int exithelp;            // Should error_exit print a usage message first?
   int old_umask;           // Old umask preserved by TOYFLAG_UMASK
+  int toycount;            // Total number of commands in this build
+
+  // This is at the end so toy_init() doesn't zero it.
   jmp_buf *rebound;        // longjmp here instead of exit when do_rebound set
 } toys;
 
-// One big temporary buffer, for use by commands (not library functions).
+// Two big temporary buffers: one for use by commands, one for library functions
 
-extern char toybuf[4096];
+extern char toybuf[4096], libbuf[4096];
+
+extern char **environ;
 
 #define GLOBALS(...)
 

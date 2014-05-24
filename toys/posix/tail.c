@@ -4,20 +4,20 @@
  *
  * See http://opengroup.org/onlinepubs/9699919799/utilities/tail.html
 
-USE_TAIL(NEWTOY(tail, "fc-n-", TOYFLAG_BIN))
+USE_TAIL(NEWTOY(tail, "fc-n-[-cn]", TOYFLAG_BIN))
 
 config TAIL
   bool "tail"
   default y
   help
-    usage: tail [-n|c number] [-f] [file...]
+    usage: tail [-n|c NUMBER] [-f] [FILE...]
 
     Copy last lines from files to stdout. If no files listed, copy from
     stdin. Filename "-" is a synonym for stdin.
 
-    -n	output the last X lines (default 10), +X counts from start.
-    -c	output the last X bytes, +X counts from start
-    -f	follow file, waiting for more data to be appended
+    -n	output the last NUMBER lines (default 10), +X counts from start.
+    -c	output the last NUMBER bytes, +NUMBER counts from start
+    -f	follow FILE(s), waiting for more data to be appended
 
 config TAIL_SEEK
   bool "tail seek support"
@@ -47,6 +47,7 @@ static struct line_list *get_chunk(int fd, int len)
 {
   struct line_list *line = xmalloc(sizeof(struct line_list)+len);
 
+  memset(line, 0, sizeof(struct line_list));
   line->data = ((char *)line) + sizeof(struct line_list);
   line->len = readall(fd, line->data, len);
 
@@ -61,6 +62,7 @@ static struct line_list *get_chunk(int fd, int len)
 static void dump_chunk(void *ptr)
 {
   struct line_list *list = ptr;
+
   xwrite(1, list->data, list->len);
   free(list);
 }
@@ -98,21 +100,17 @@ static int try_lseek(int fd, long bytes, long lines)
       break;
     }
     if (!(temp = get_chunk(fd, chunk))) break;
-    if (list) list->next = temp;
+    temp->next = list;
     list = temp;
 
     // Count newlines in this chunk.
     offset = list->len;
     while (offset--) {
       // If the last line ends with a newline, that one doesn't count.
-      if (!flag) {
-        flag++;
-
-        continue;
-      }
+      if (!flag) flag++;
 
       // Start outputting data right after newline
-      if (list->data[offset] == '\n' && !++lines) {
+      else if (list->data[offset] == '\n' && !++lines) {
         offset++;
         list->data += offset;
         list->len -= offset;
@@ -134,6 +132,7 @@ static int try_lseek(int fd, long bytes, long lines)
 static void do_tail(int fd, char *name)
 {
   long bytes = TT.bytes, lines = TT.lines;
+  int linepop = 1;
 
   if (toys.optc > 1) {
     if (TT.file_no++) xputc('\n');
@@ -147,48 +146,42 @@ static void do_tail(int fd, char *name)
 
     // The slow codepath is always needed, and can handle all input,
     // so make lseek support optional.
-    if (CFG_TAIL_SEEK && try_lseek(fd, bytes, lines));
+    if (CFG_TAIL_SEEK && try_lseek(fd, bytes, lines)) return;
 
     // Read data until we run out, keep a trailing buffer
-    else for (;;) {
-      int len, count;
-      char *try;
-
+    for (;;) {
+      // Read next page of data, appending to linked list in order
       if (!(new = get_chunk(fd, sizeof(toybuf)))) break;
-      // append in order
-      dlist_add_nomalloc((void *)&list, (struct double_list *)new);
+      dlist_add_nomalloc((void *)&list, (void *)new);
 
-      // Measure new chunk, discarding extra data from buffer
-      len = new->len;
-      try = new->data;
-      for (count=0; count<len; count++) {
-        if ((toys.optflags & FLAG_c) && bytes) {
-          bytes++;
-          continue;
+      // If tracing bytes, add until we have enough, discarding overflow.
+      if (TT.bytes) {
+        bytes += new->len;
+        if (bytes > 0) {
+          while (list->len <= bytes) {
+            bytes -= list->len;
+            free(dlist_pop(&list));
+          }
+          list->data += bytes;
+          list->len -= bytes;
         }
+      } else {
+        int len = new->len, count;
+        char *try = new->data;
 
-        if (lines) {
-          if(try[count] != '\n' && count != len-1) continue;
-          if (lines<0) {
-            if (!++lines) ++lines;
-            continue;
+        // First character _after_ a newline starts a new line, which
+        // works even if file doesn't end with a newline
+        for (count=0; count<len; count++) {
+          if (linepop) lines++;
+          linepop = try[count] == '\n';
+
+          if (lines > 0) {
+            do {
+              if (!--(list->len)) free(dlist_pop(&list));
+            } while (*(list->data++) != '\n');
+            lines--;
           }
         }
-
-        // Time to discard data; given that bytes and lines were
-        // nonzero coming in, we can't discard too much if we're
-        // measuring right.
-        do {
-          char c = *(list->data++);
-          if (!(--list->len)) {
-            struct line_list *next = list->next;
-            list->prev->next = next;
-            list->next->prev = list->prev;
-            free(list);
-            list = next;
-          }
-          if (c == '\n') break;
-        } while (lines);
       }
     }
 

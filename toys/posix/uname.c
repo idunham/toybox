@@ -4,20 +4,20 @@
  *
  * See http://opengroup.org/onlinepubs/9699919799/utilities/uname.html
 
-USE_UNAME(NEWTOY(uname, "amvrns", TOYFLAG_BIN))
+USE_UNAME(NEWTOY(uname, "oamvrns[+os]", TOYFLAG_BIN))
 
 config UNAME
   bool "uname"
   default y
   help
-    usage: uname [-asnrvmpio]
+    usage: uname [-asnrvm]
 
     Print system information.
 
     -s	System name
     -n	Network (domain) name
-    -r	Release number
-    -v	Version (build date)
+    -r	Kernel Release number
+    -v	Kernel Version 
     -m	Machine (hardware) name
     -a	All of the above
 */

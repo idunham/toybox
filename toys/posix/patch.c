@@ -201,21 +201,21 @@ static int apply_one_hunk(void)
         // Match failed.  Write out first line of buffered data and
         // recheck remaining buffered data for a new match.
 
-        if (PATCH_DEBUG) fprintf(stderr, "NOT: %s\n", plist->data);
+        if (PATCH_DEBUG) {
+          int bug = 0;
+
+          while (plist->data[bug] == check->data[bug]) bug++;
+          fprintf(stderr, "NOT(%d:%d!=%d): %s\n", bug, plist->data[bug],
+            check->data[bug], plist->data);
+        }
 
         TT.state = 3;
-        check = llist_pop(&buf);
-        check->prev->next = buf;
-        buf->prev = check->prev;
-        do_line(check);
+        do_line(check = dlist_pop(&buf));
         plist = TT.current_hunk;
 
         // If we've reached the end of the buffer without confirming a
         // match, read more lines.
-        if (check==buf) {
-          buf = 0;
-          break;
-        }
+        if (!buf) break;
         check = buf;
       } else {
         if (PATCH_DEBUG) fprintf(stderr, "MAYBE: %s\n", plist->data);
@@ -385,12 +385,8 @@ void patch_main(void)
           if ((!strcmp(oldname, "/dev/null") || !oldsum) && access(name, F_OK))
           {
             printf("creating %s\n", name);
-            s = strrchr(name, '/');
-            if (s) {
-              *s = 0;
-              xmkpath(name, -1);
-              *s = '/';
-            }
+            if (mkpathat(AT_FDCWD, name, 0, 2))
+              perror_exit("mkpath %s", name);
             TT.filein = xcreate(name, O_CREAT|O_EXCL|O_RDWR, 0666);
           } else {
             printf("patching %s\n", name);

@@ -3,7 +3,8 @@
 
 all: toybox
 
-toybox toybox_unstripped: .config *.[ch] lib/*.[ch] toys/*.h toys/*/*.c scripts/*.sh
+KCONFIG_CONFIG ?= .config
+toybox toybox_unstripped: $(KCONFIG_CONFIG) *.[ch] lib/*.[ch] toys/*.h toys/*/*.c scripts/*.sh
 	scripts/make.sh
 
 .PHONY: clean distclean baseline bloatcheck install install_flat \
@@ -24,16 +25,16 @@ baseline: toybox_unstripped
 bloatcheck: toybox_old toybox_unstripped
 	@scripts/bloatcheck toybox_old toybox_unstripped
 
-instlist: toybox
-	$(HOSTCC) -I . scripts/install.c -o instlist
+generated/instlist: toybox
+	$(HOSTCC) -I . scripts/install.c -o generated/instlist
 
-install_flat: instlist
+install_flat: generated/instlist
 	scripts/install.sh --symlink --force
 
 install:
 	scripts/install.sh --long --symlink --force
 
-uninstall_flat: instlist
+uninstall_flat: generated/instlist
 	scripts/install.sh --uninstall
 
 uninstall:
@@ -41,11 +42,13 @@ uninstall:
 
 clean::
 	rm -rf toybox toybox_unstripped generated/config.h generated/Config.in \
-		generated/newtoys.h generated/globals.h instlist testdir \
-		generated/Config.probed
+		generated/newtoys.h generated/globals.h testdir \
+		generated/Config.probed generated/oldtoys.h generated/flags.h \
+		.singleconfig .singleconfig.old generated/help.h \
+		generated/instlist generated/mkflags generated/config2help
 
 distclean: clean
-	rm -f toybox_old .config* generated/help.h
+	rm -f toybox_old .config*
 
 test: tests
 
