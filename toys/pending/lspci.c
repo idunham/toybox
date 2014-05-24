@@ -100,8 +100,6 @@ int do_lspci(struct dirtree *new)
       if ((fd = openat(dirfd, *fields, O_RDONLY)) < 0) continue;
       xread(fd, p, size);
       close(fd);
-
-      p[size] = 0;
     }
 
     if (errno) goto leave;
