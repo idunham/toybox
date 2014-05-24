@@ -202,7 +202,14 @@ void mdev_main(void)
   if (toys.optflags) {
     dirtree_read("/sys/class", callback);
     dirtree_read("/sys/block", callback);
+    return;
   }
 
   // hotplug support goes here
+  char *envpath = getenv("DEVPATH"), *dev;
+
+  if (!envpath) perror_exit("use mdev as a hotplug helper");
+  dev = xmprintf("/sys%s", envpath);
+  make_device(dev);
+  free(dev);
 }
